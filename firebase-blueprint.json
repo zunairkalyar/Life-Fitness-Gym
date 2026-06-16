@@ -1,0 +1,500 @@
+{
+  "entities": {
+    "Settings": {
+      "title": "Settings",
+      "description": "Gym structural configuration and public web page custom texts.",
+      "type": "object",
+      "properties": {
+        "gymName": { "type": "string" },
+        "location": { "type": "string" },
+        "googleMapsUrl": { "type": "string" },
+        "phone": { "type": "string" },
+        "whatsApp": { "type": "string" },
+        "timings": { "type": "object" },
+        "openPromo": { "type": "object" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "updatedBy": { "type": "string" }
+      },
+      "required": ["gymName", "phone", "whatsApp"]
+    },
+    "User": {
+      "title": "User",
+      "description": "User profile with access control role bindings.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["super_admin", "admin", "reception", "trainer", "member"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "name", "role"]
+    },
+    "Member": {
+      "title": "Member",
+      "description": "Gym member details and current membership statuses.",
+      "type": "object",
+      "properties": {
+        "memberId": { "type": "string" },
+        "uid": { "type": "string" },
+        "fullName": { "type": "string" },
+        "fatherName": { "type": "string" },
+        "phone": { "type": "string" },
+        "whatsApp": { "type": "string" },
+        "gender": { "type": "string" },
+        "dob": { "type": "string" },
+        "address": { "type": "string" },
+        "emergencyContactName": { "type": "string" },
+        "emergencyContactNumber": { "type": "string" },
+        "bloodGroup": { "type": "string" },
+        "cnic": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "planId": { "type": "string" },
+        "planName": { "type": "string" },
+        "durationMonths": { "type": "number" },
+        "membershipStatus": { "type": "string", "enum": ["Active", "Expiring Soon", "Expired", "Frozen", "Pending Approval", "Suspended"] },
+        "joinedDate": { "type": "string" },
+        "expiryDate": { "type": "string" },
+        "medicalNotes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["memberId", "fullName", "phone", "membershipStatus"]
+    },
+    "MembershipPlan": {
+      "title": "MembershipPlan",
+      "description": "Gym plan details and pricing packages.",
+      "type": "object",
+      "properties": {
+        "planId": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "price1m": { "type": "number" },
+        "price3m": { "type": "number" },
+        "price6m": { "type": "number" },
+        "price12m": { "type": "number" },
+        "features": { "type": "array" },
+        "isPopular": { "type": "boolean" },
+        "isActive": { "type": "boolean" },
+        "promoDiscount": { "type": "number" },
+        "promoStart": { "type": "string" },
+        "promoEnd": { "type": "string" }
+      },
+      "required": ["planId", "name", "price1m", "isActive"]
+    },
+    "MembershipApplication": {
+      "title": "MembershipApplication",
+      "description": "Registrations submitted by prospective members.",
+      "type": "object",
+      "properties": {
+        "applicationId": { "type": "string" },
+        "fullName": { "type": "string" },
+        "fatherName": { "type": "string" },
+        "phone": { "type": "string" },
+        "whatsApp": { "type": "string" },
+        "gender": { "type": "string" },
+        "dob": { "type": "string" },
+        "address": { "type": "string" },
+        "emergencyContactName": { "type": "string" },
+        "emergencyContactNumber": { "type": "string" },
+        "bloodGroup": { "type": "string" },
+        "cnic": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "planId": { "type": "string" },
+        "durationMonths": { "type": "number" },
+        "timingPreference": { "type": "string" },
+        "medicalNotes": { "type": "string" },
+        "status": { "type": "string", "enum": ["Pending", "Approved", "Rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["applicationId", "fullName", "phone", "gender", "planId", "durationMonths", "status"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Transaction details and receipt configurations.",
+      "type": "object",
+      "properties": {
+        "paymentId": { "type": "string" },
+        "receiptNo": { "type": "string" },
+        "memberId": { "type": "string" },
+        "memberName": { "type": "string" },
+        "planName": { "type": "string" },
+        "duration": { "type": "number" },
+        "originalPrice": { "type": "number" },
+        "discountType": { "type": "string" },
+        "discountAmount": { "type": "number" },
+        "finalPaidAmount": { "type": "number" },
+        "paymentMethod": { "type": "string" },
+        "paymentStatus": { "type": "string", "enum": ["Pending", "Paid", "Partially Paid", "Refunded", "Cancelled"] },
+        "paymentDate": { "type": "string" },
+        "refNo": { "type": "string" },
+        "receivedBy": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["paymentId", "receiptNo", "memberId", "finalPaidAmount", "paymentStatus"]
+    },
+    "Attendance": {
+      "title": "Attendance",
+      "description": "Daily attendance logs.",
+      "type": "object",
+      "properties": {
+        "recordId": { "type": "string" },
+        "memberId": { "type": "string" },
+        "memberName": { "type": "string" },
+        "gender": { "type": "string" },
+        "date": { "type": "string" },
+        "checkInTime": { "type": "string" },
+        "checkOutTime": { "type": "string" },
+        "staffId": { "type": "string" },
+        "staffName": { "type": "string" },
+        "status": { "type": "string" },
+        "overrideReason": { "type": "string" }
+      },
+      "required": ["recordId", "memberId", "date", "checkInTime", "status"]
+    },
+    "Exercise": {
+      "title": "Exercise",
+      "description": "Gym challenge exercise configurations.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "benchmarkMale": { "type": "string" },
+        "benchmarkFemale": { "type": "string" },
+        "scoringType": { "type": "string" },
+        "rules": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "imageUrl": { "type": "string" }
+      },
+      "required": ["id", "name", "scoringType", "isActive"]
+    },
+    "CompetitionAttempt": {
+      "title": "CompetitionAttempt",
+      "description": "Exercise submission attempts for the month's challenge.",
+      "type": "object",
+      "properties": {
+        "attemptId": { "type": "string" },
+        "memberId": { "type": "string" },
+        "memberName": { "type": "string" },
+        "gender": { "type": "string" },
+        "exerciseId": { "type": "string" },
+        "exerciseName": { "type": "string" },
+        "score": { "type": "number" },
+        "scoreDisplay": { "type": "string" },
+        "staffId": { "type": "string" },
+        "staffName": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "videoUrl": { "type": "string" },
+        "status": { "type": "string", "enum": ["Pending", "Approved", "Rejected", "Disqualified"] },
+        "notes": { "type": "string" },
+        "period": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["attemptId", "memberId", "exerciseId", "score", "status", "period", "createdAt"]
+    },
+    "Winner": {
+      "title": "Winner",
+      "description": "Historical archived monthly challenge winners.",
+      "type": "object",
+      "properties": {
+        "period": { "type": "string" },
+        "memberId": { "type": "string" },
+        "memberName": { "type": "string" },
+        "exerciseId": { "type": "string" },
+        "exerciseName": { "type": "string" },
+        "score": { "type": "number" },
+        "scoreDisplay": { "type": "string" },
+        "prize": { "type": "string" },
+        "photoUrl": { "type": "string" }
+      },
+      "required": ["period", "memberId", "exerciseId"]
+    },
+    "MembershipCredit": {
+      "title": "MembershipCredit",
+      "description": "Free membership months awarded.",
+      "type": "object",
+      "properties": {
+        "creditId": { "type": "string" },
+        "memberId": { "type": "string" },
+        "memberName": { "type": "string" },
+        "winningExercise": { "type": "string" },
+        "period": { "type": "string" },
+        "status": { "type": "string", "enum": ["Available", "Applied", "Expired", "Cancelled"] },
+        "issuedAt": { "type": "string" },
+        "redeemedAt": { "type": "string" },
+        "approvedBy": { "type": "string" }
+      },
+      "required": ["creditId", "memberId", "status"]
+    },
+    "Announcement": {
+      "title": "Announcement",
+      "description": "Gym visual updates and dashboard messages.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "content", "isActive", "createdAt"]
+    },
+    "Testimonial": {
+      "title": "Testimonial",
+      "description": "Website visitor reviews.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "rating": { "type": "number" },
+        "text": { "type": "string" },
+        "photoUrl": { "type": "string" }
+      },
+      "required": ["name", "rating", "text"]
+    },
+    "GalleryItem": {
+      "title": "GalleryItem",
+      "description": "Image references for the public website gallery.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "url": { "type": "string" },
+        "category": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["url", "createdAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Admin activity tracing records.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "action": { "type": "string" },
+        "details": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "action", "createdAt"]
+    },
+    "SavedExercise": {
+      "title": "SavedExercise",
+      "description": "Exercises saved by a member.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "memberId": { "type": "string" },
+        "provider": { "type": "string" },
+        "externalExerciseId": { "type": "string" },
+        "exerciseName": { "type": "string" },
+        "primaryMuscles": { "type": "array" },
+        "category": { "type": "string" },
+        "difficulty": { "type": "string" },
+        "personalNote": { "type": "string" },
+        "savedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["memberId", "provider", "externalExerciseId", "exerciseName"]
+    },
+    "MemberWorkoutExercise": {
+      "title": "MemberWorkoutExercise",
+      "description": "Exercise units forming a member's custom, daily, or routine workouts.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "memberId": { "type": "string" },
+        "workoutPlanId": { "type": "string" },
+        "provider": { "type": "string" },
+        "externalExerciseId": { "type": "string" },
+        "exerciseName": { "type": "string" },
+        "primaryMuscles": { "type": "array" },
+        "category": { "type": "string" },
+        "sets": { "type": "number" },
+        "reps": { "type": "string" },
+        "restSeconds": { "type": "number" },
+        "weight": { "type": "string" },
+        "notes": { "type": "string" },
+        "order": { "type": "number" }
+      },
+      "required": ["memberId", "exerciseName", "sets", "reps"]
+    },
+    "ExerciseEquipmentMapping": {
+      "title": "ExerciseEquipmentMapping",
+      "description": "Custom administrator catalog of actual machines and equipment available in the local facility.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "equipmentName": { "type": "string" },
+        "muscleWikiCategory": { "type": "string" },
+        "availableAtLifeFitness": { "type": "boolean" },
+        "basicPlanAccess": { "type": "boolean" },
+        "premiumPlanAccess": { "type": "boolean" },
+        "quantity": { "type": "number" },
+        "status": { "type": "string", "enum": ["Available", "Temporarily Unavailable", "Maintenance", "Coming Soon", "Not Available"] },
+        "notes": { "type": "string" },
+        "machinePhotograph": { "type": "string" }
+      },
+      "required": ["equipmentName", "muscleWikiCategory", "availableAtLifeFitness", "status"]
+    },
+    "MuscleWikiCapabilities": {
+      "title": "MuscleWikiCapabilities",
+      "description": "Capabilities detected or configured dynamically for the MuscleWiki account.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "feature": { "type": "string" },
+        "isAvailable": { "type": "boolean" },
+        "lastTestedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["feature", "isAvailable"]
+    },
+    "MuscleWikiCacheMetadata": {
+      "title": "MuscleWikiCacheMetadata",
+      "description": "Metadata for cached API responses.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "cacheKey": { "type": "string" },
+        "expiresAt": { "type": "string" }
+      },
+      "required": ["cacheKey", "expiresAt"]
+    },
+    "MuscleWikiUsage": {
+      "title": "MuscleWikiUsage",
+      "description": "Usage logs tracking requests per member.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "memberId": { "type": "string" },
+        "searchesThisHour": { "type": "number" },
+        "detailsToday": { "type": "number" },
+        "videosToday": { "type": "number" }
+      },
+      "required": ["memberId"]
+    },
+    "MuscleWikiErrorLog": {
+      "title": "MuscleWikiErrorLog",
+      "description": "API issues log.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "endpoint": { "type": "string" },
+        "statusCode": { "type": "number" },
+        "errorMessage": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["endpoint", "createdAt"]
+    },
+    "MuscleWikiSettings": {
+      "title": "MuscleWikiSettings",
+      "description": "MuscleWiki connection and general settings.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "enabled": { "type": "boolean" },
+        "defaultGender": { "type": "string" },
+        "preferredVideoType": { "type": "string" }
+      },
+      "required": ["enabled"]
+    }
+  },
+  "firestore": {
+    "/settings/{settingsId}": {
+      "schema": "Settings",
+      "description": "Global settings parameters, such as contact and name of the gym."
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Authenticated users and roles."
+    },
+    "/members/{memberId}": {
+      "schema": "Member",
+      "description": "Active approved gym members."
+    },
+    "/membershipPlans/{planId}": {
+      "schema": "MembershipPlan",
+      "description": "Basic and Premium plans."
+    },
+    "/membershipApplications/{appId}": {
+      "schema": "MembershipApplication",
+      "description": "Submissions for joining memberships."
+    },
+    "/payments/{paymentId}": {
+      "schema": "Payment",
+      "description": "Transaction payment receipts."
+    },
+    "/attendance/{recordId}": {
+      "schema": "Attendance",
+      "description": "Daily check-in logs."
+    },
+    "/exercises/{exerciseId}": {
+      "schema": "Exercise",
+      "description": "The nine active challenge exercises."
+    },
+    "/competitionAttempts/{attemptId}": {
+      "schema": "CompetitionAttempt",
+      "description": "Verified attempts on challenge exercises."
+    },
+    "/winners/{winnerId}": {
+      "schema": "Winner",
+      "description": "Historical leaderboard champions."
+    },
+    "/membershipCredits/{creditId}": {
+      "schema": "MembershipCredit",
+      "description": "Issued free membership awards."
+    },
+    "/announcements/{announcementId}": {
+      "schema": "Announcement",
+      "description": "Gym notices and announcements."
+    },
+    "/testimonials/{id}": {
+      "schema": "Testimonial",
+      "description": "Client feedback comments."
+    },
+    "/gallery/{id}": {
+      "schema": "GalleryItem",
+      "description": "List of images for website display."
+    },
+    "/auditLogs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Staff logs tracking records."
+    },
+    "/savedExercises/{id}": {
+      "schema": "SavedExercise",
+      "description": "Exercises saved by a member."
+    },
+    "/memberWorkoutExercises/{id}": {
+      "schema": "MemberWorkoutExercise",
+      "description": "Exercise units forming a member's custom daily workouts."
+    },
+    "/exerciseEquipmentMapping/{id}": {
+      "schema": "ExerciseEquipmentMapping",
+      "description": "Catalog of sports equipment available in gym."
+    },
+    "/muscleWikiCapabilities/{id}": {
+      "schema": "MuscleWikiCapabilities",
+      "description": "MuscleWiki dynamically detected capabilities."
+    },
+    "/muscleWikiCacheMetadata/{id}": {
+      "schema": "MuscleWikiCacheMetadata",
+      "description": "Cache records metadata track."
+    },
+    "/muscleWikiUsage/{id}": {
+      "schema": "MuscleWikiUsage",
+      "description": "Usage logs tracking requests per member."
+    },
+    "/muscleWikiErrorLogs/{id}": {
+      "schema": "MuscleWikiErrorLog",
+      "description": "Error logs tracking failed MuscleWiki responses."
+    },
+    "/muscleWikiSettings/{id}": {
+      "schema": "MuscleWikiSettings",
+      "description": "Configurations for MuscleWiki."
+    }
+  }
+}

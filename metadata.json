@@ -1,0 +1,6 @@
+{
+  "name": "Life Fitness",
+  "description": "Gym website and management application with member portal, admin dashboard, monthly challenges, leaderboard, and TV display.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

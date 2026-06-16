@@ -1,0 +1,71 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;650;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Redefine primary red system to be Gym Yellow to automatically transition many built-in components */
+  --color-red-400: #fbbf24;
+  --color-red-500: #eab308;
+  --color-red-600: #facc15;
+  --color-red-650: #facc15;
+  --color-red-700: #ca8a04;
+  --color-red-800: #a16207;
+  --color-red-900: #854d0e;
+  --color-red-950: #1e1b03;
+
+  /* Standard theme brand colors */
+  --color-gym-yellow: #facc15;
+  --color-gym-yellow-hover: #eab308;
+  --color-gym-black: #060606;
+  --color-gym-graphite: #141416;
+  --color-gym-border: #242427;
+  
+  --color-danger-red: #ef4444;
+}
+
+/* TV Slide / Page view transition keyframe utilities */
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Custom scrollbar overrides for a continuous premium dark dashboard */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #060606;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1c1c1f;
+  border-radius: 99px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #facc15;
+}
+
+::selection {
+  background: #facc15;
+  color: #000000;
+}
+

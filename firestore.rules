@@ -1,0 +1,197 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Global safety net - Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+        (getUserData().role == "super_admin" || getUserData().role == "admin");
+    }
+
+    function isStaff() {
+      return isSignedIn() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+        (getUserData().role == "super_admin" || getUserData().role == "admin" || getUserData().role == "reception");
+    }
+
+    function isTrainer() {
+      return isSignedIn() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+        (getUserData().role == "super_admin" || getUserData().role == "admin" || getUserData().role == "trainer");
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Collection Security
+
+    // --- SETTINGS ---
+    match /settings/{settingsId} {
+      // Anyone can read gym settings to see opening schedules, address, plans, etc.
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // --- USERS ---
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      // On creation, let them write their profile but force 'member' role initially to prevent escalation
+      allow create: if isSignedIn() && isOwner(userId) && request.resource.data.role == "member";
+      // Only admins or super admins can change user roles
+      allow update: if isOwner(userId) ? (request.resource.data.role == resource.data.role) : isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // --- MEMBERS ---
+    match /members/{memberId} {
+      // Members can read their own profile; staff and admins can read all
+      allow read: if isStaff() || (isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().uid == resource.data.uid);
+      allow write: if isStaff();
+    }
+
+    // --- MEMBERSHIP PLANS ---
+    match /membershipPlans/{planId} {
+      allow read: if true; // Public can see active plans
+      allow write: if isAdmin();
+    }
+
+    // --- MEMBERSHIP APPLICATIONS ---
+    match /membershipApplications/{appId} {
+      // Public can submit an application (create), staff can review all, users can read their own
+      allow create: if true;
+      allow read: if isStaff();
+      allow update: if isStaff();
+      allow delete: if isAdmin();
+    }
+
+    // --- PAYMENTS ---
+    match /payments/{paymentId} {
+      // Staff can manage all payments; members can query their own payments
+      allow read: if isStaff() || (isSignedIn() && resource.data.memberId == request.auth.uid);
+      allow write: if isStaff();
+    }
+
+    // --- ATTENDANCE ---
+    match /attendance/{recordId} {
+      // Staff can manage and read all; members can read their own attendance
+      allow read: if isStaff() || (isSignedIn() && resource.data.memberId == request.auth.uid);
+      allow write: if isStaff();
+    }
+
+    // --- EXERCISES ---
+    match /exercises/{exerciseId} {
+      allow read: if true; // Exercises are public
+      allow write: if isAdmin();
+    }
+
+    // --- COMPETITION ATTEMPTS ---
+    match /competitionAttempts/{attemptId} {
+      // Approved attempts are publicly readable; staff can read all
+      allow read: if resource.data.status == "Approved" || isTrainer() || isStaff() || (isSignedIn() && resource.data.memberId == request.auth.uid);
+      // Members can submit attempts but only Trainer or Admin can approve/set status to Approved/Rejected/Disqualified
+      allow create: if isSignedIn() && request.resource.data.memberId == request.auth.uid && request.resource.data.status == "Pending";
+      allow update: if isTrainer() || isStaff();
+      allow delete: if isAdmin();
+    }
+
+    // --- WINNERS ---
+    match /winners/{winnerId} {
+      allow read: if true; // Public list of winners
+      allow write: if isAdmin();
+    }
+
+    // --- MEMBERSHIP CREDITS ---
+    match /membershipCredits/{creditId} {
+      allow read: if isStaff() || (isSignedIn() && resource.data.memberId == request.auth.uid);
+      allow write: if isStaff();
+    }
+
+    // --- ANNOUNCEMENTS ---
+    match /announcements/{announcementId} {
+      allow read: if true; // Announcements can be fetched by anyone
+      allow write: if isAdmin();
+    }
+
+    // --- TESTIMONIALS ---
+    match /testimonials/{id} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
+    }
+
+    // --- GALLERY ---
+    match /gallery/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // --- AUDIT LOGS ---
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn(); // Any staff activity log can write logs
+    }
+
+    // --- SAVED EXERCISES ---
+    match /savedExercises/{id} {
+      allow read, write: if isSignedIn();
+    }
+
+    // --- MEMBER WORKOUT EXERCISES ---
+    match /memberWorkoutExercises/{id} {
+      allow read, write: if isSignedIn();
+    }
+
+    // --- EXERCISE EQUIPMENT MAPPING ---
+    match /exerciseEquipmentMapping/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // --- MUSCLEWIKI CAPABILITIES ---
+    match /muscleWikiCapabilities/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // --- MUSCLEWIKI CACHE METADATA ---
+    match /muscleWikiCacheMetadata/{id} {
+      allow read, write: if isAdmin();
+    }
+
+    // --- MUSCLEWIKI USAGE ---
+    match /muscleWikiUsage/{id} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.memberId == request.auth.uid);
+      allow write: if isAdmin() || (isSignedIn() && request.resource.data.memberId == request.auth.uid);
+    }
+
+    // --- MUSCLEWIKI ERROR LOGS ---
+    match /muscleWikiErrorLogs/{id} {
+      allow read, write: if isAdmin();
+    }
+
+    // --- MUSCLEWIKI SETTINGS ---
+    match /muscleWikiSettings/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+  }
+}
