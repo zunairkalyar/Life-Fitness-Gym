@@ -401,6 +401,98 @@
         "preferredVideoType": { "type": "string" }
       },
       "required": ["enabled"]
+    },
+    "MemberWhatsAppSettings": {
+      "title": "MemberWhatsAppSettings",
+      "description": "WhatsApp automation configurations for members.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "memberId": { "type": "string" },
+        "whatsappNumber": { "type": "string" },
+        "instanceId": { "type": "string" },
+        "remindersEnabled": { "type": "boolean" },
+        "timezone": { "type": "string" },
+        "workoutReminderTime": { "type": "string" },
+        "attendanceCheckDelayMinutes": { "type": "number" },
+        "attendanceCutoffTime": { "type": "string" },
+        "expectedWorkoutDurationMinutes": { "type": "number" },
+        "completionFollowupDelayMinutes": { "type": "number" },
+        "preferredLanguage": { "type": "string", "enum": ["en", "ur"] },
+        "lastMessageStatus": { "type": "string" },
+        "lastMessageDate": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "memberId", "whatsappNumber", "remindersEnabled"]
+    },
+    "MemberWorkoutSession": {
+      "title": "MemberWorkoutSession",
+      "description": "Daily workout sessions and automated attendance replies.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "memberId": { "type": "string" },
+        "workoutPlanId": { "type": "string" },
+        "workoutDate": { "type": "string" },
+        "workoutName": { "type": "string" },
+        "scheduledTime": { "type": "string" },
+        "reminderSentAt": { "type": "string" },
+        "attendanceQuestionSentAt": { "type": "string" },
+        "plannedAttendanceResponse": { "type": "string" },
+        "checkInTime": { "type": "string" },
+        "checkOutTime": { "type": "string" },
+        "completionQuestionSentAt": { "type": "string" },
+        "completionResponse": { "type": "string" },
+        "completedAt": { "type": "string" },
+        "status": { "type": "string" },
+        "isLateAttendance": { "type": "boolean" },
+        "absenceRecordedAt": { "type": "string" },
+        "messageFailureReason": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "memberId", "workoutDate", "status"]
+    },
+    "WhatsAppAutomationLog": {
+      "title": "WhatsAppAutomationLog",
+      "description": "WhatsApp notification logs and error tracking.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "memberId": { "type": "string" },
+        "workoutSessionId": { "type": "string" },
+        "automationType": { "type": "string" },
+        "destinationNumber": { "type": "string" },
+        "messageType": { "type": "string" },
+        "messageContent": { "type": "string" },
+        "provider": { "type": "string" },
+        "providerRequestId": { "type": "string" },
+        "requestPayloadSanitized": { "type": "string" },
+        "responsePayload": { "type": "string" },
+        "status": { "type": "string", "enum": ["success", "failed"] },
+        "errorMessage": { "type": "string" },
+        "attemptNumber": { "type": "number" },
+        "sentAt": { "type": "string", "format": "date-time" },
+        "deliveredAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "memberId", "destinationNumber", "status"]
+    },
+    "MemberPasskey": {
+      "title": "MemberPasskey",
+      "description": "FIDO2 / WebAuthn public keys or biometric passkeys associated with a member.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "memberId": { "type": "string" },
+        "name": { "type": "string" },
+        "publicKey": { "type": "string" },
+        "counter": { "type": "number" },
+        "deviceType": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "memberId", "name", "publicKey"]
     }
   },
   "firestore": {
@@ -495,6 +587,22 @@
     "/muscleWikiSettings/{id}": {
       "schema": "MuscleWikiSettings",
       "description": "Configurations for MuscleWiki."
+    },
+    "/memberWhatsAppSettings/{settingId}": {
+      "schema": "MemberWhatsAppSettings",
+      "description": "Members WhatsApp automation settings configurations."
+    },
+    "/memberWorkoutSessions/{sessionId}": {
+      "schema": "MemberWorkoutSession",
+      "description": "Members automated day workout sessions and attendance records."
+    },
+    "/whatsappAutomationLogs/{logId}": {
+      "schema": "WhatsAppAutomationLog",
+      "description": "Automation reminder sent messages and inbound message response trails."
+    },
+    "/memberPasskeys/{passkeyId}": {
+      "schema": "MemberPasskey",
+      "description": "Registered biometric passkey credentials for secure portal entry."
     }
   }
 }

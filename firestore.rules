@@ -193,5 +193,37 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if isAdmin();
     }
+
+    // --- MEMBER WHATSAPP SETTINGS ---
+    match /memberWhatsAppSettings/{settingId} {
+      allow read: if isStaff() || (isSignedIn() && resource.data.memberId == request.auth.uid);
+      allow create: if isStaff() || (isSignedIn() && request.resource.data.memberId == request.auth.uid);
+      allow update: if isStaff() || (isSignedIn() && resource.data.memberId == request.auth.uid && request.resource.data.memberId == request.auth.uid);
+      allow delete: if isStaff();
+    }
+
+    // --- MEMBER WORKOUT SESSIONS ---
+    match /memberWorkoutSessions/{sessionId} {
+      allow read: if isStaff() || (isSignedIn() && resource.data.memberId == request.auth.uid);
+      allow create: if isStaff() || (isSignedIn() && request.resource.data.memberId == request.auth.uid);
+      allow update: if isStaff() || (isSignedIn() && resource.data.memberId == request.auth.uid && request.resource.data.memberId == request.auth.uid);
+      allow delete: if isStaff();
+    }
+
+    // --- WHATSAPP AUTOMATION LOGS ---
+    match /whatsappAutomationLogs/{logId} {
+      allow read: if isStaff() || (isSignedIn() && resource.data.memberId == request.auth.uid);
+      allow create: if isStaff() || (isSignedIn() && request.resource.data.memberId == request.auth.uid);
+      allow update: if isStaff();
+      allow delete: if isAdmin();
+    }
+
+    // --- MEMBER PASSKEYS ---
+    match /memberPasskeys/{passkeyId} {
+      allow read: if isStaff() || (isSignedIn() && resource.data.memberId == request.auth.uid);
+      allow create: if isStaff() || (isSignedIn() && request.resource.data.memberId == request.auth.uid);
+      allow update: if isStaff() || (isSignedIn() && resource.data.memberId == request.auth.uid && request.resource.data.memberId == request.auth.uid);
+      allow delete: if isStaff() || (isSignedIn() && resource.data.memberId == request.auth.uid);
+    }
   }
 }

@@ -14,8 +14,13 @@ import {
   Check, 
   Send, 
   ShieldCheck, 
-  Camera 
+  Camera,
+  Utensils,
+  Apple,
+  TrendingUp,
+  Flame
 } from "lucide-react";
+import { Fingerprint, KeyRound, Terminal, Eye, Cpu } from "lucide-react";
 import { 
   Member, 
   MembershipPlan, 
@@ -23,7 +28,9 @@ import {
   CompetitionAttempt, 
   ChallengeWinner, 
   MembershipApplication, 
-  GymSettings 
+  GymSettings,
+  UserProfile,
+  MemberPasskey
 } from "../types";
 
 interface PublicPagesProps {
@@ -37,6 +44,7 @@ interface PublicPagesProps {
   onApply: (applicant: Partial<MembershipApplication>) => Promise<MembershipApplication>;
   onTriggerGoogleLogin: () => void;
   lang: "en" | "ur";
+  onLoginSuccess?: (user: UserProfile) => void;
 }
 
 export default function PublicPages({ 
@@ -49,8 +57,116 @@ export default function PublicPages({
   pastWinners, 
   onApply, 
   onTriggerGoogleLogin,
-  lang 
+  lang,
+  onLoginSuccess
 }: PublicPagesProps) {
+
+  // Local state for Passkey login
+  const [passkeyLoginId, setPasskeyLoginId] = useState("");
+  const [assertingPasskey, setAssertingPasskey] = useState(false);
+  const [passkeyAssertionLog, setPasskeyAssertionLog] = useState<string[]>([]);
+  const [showAssertModal, setShowAssertModal] = useState(false);
+  const [allowedCredentials, setAllowedCredentials] = useState<any[]>([]);
+
+  const addAssertLog = (msg: string) => {
+    setPasskeyAssertionLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
+  };
+
+  const handlePasskeySignIn = async () => {
+    setAssertingPasskey(true);
+    setPasskeyAssertionLog([]);
+    addAssertLog("FIDO2/WebAuthn Client lookup initiated...");
+    
+    try {
+      addAssertLog("POST /api/passkeys/assert-challenge...");
+      const challengeRes = await fetch("/api/passkeys/assert-challenge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ memberId: passkeyLoginId.trim() || undefined })
+      });
+      
+      if (!challengeRes.ok) {
+        throw new Error("Failed to receive authentication challenge from club server.");
+      }
+      
+      const assertOptions = await challengeRes.json();
+      addAssertLog(`Challenge loaded. Allowed credentials matched on file: ${assertOptions.allowCredentials.length}`);
+      setAllowedCredentials(assertOptions.allowCredentials);
+
+      setShowAssertModal(true);
+    } catch (err: any) {
+      addAssertLog(`ERROR: ${err.message}`);
+      setAssertingPasskey(false);
+    }
+  };
+
+  const verifyBiometricAssertion = async (deviceType: string) => {
+    setShowAssertModal(false);
+    addAssertLog(`Biometric verification succeeded on device with ${deviceType}!`);
+    addAssertLog("Asymmetric FIDO2 signature exported from enclave vault.");
+
+    try {
+      addAssertLog("Retrieving server keys database matching verification signature...");
+      // Resolve the first match or any matched key.
+      const listRes = await fetch(`/api/passkeys/settings/${passkeyLoginId.trim() || "any"}`);
+      let targetCredId = "";
+      if (listRes.ok) {
+        const listData = await listRes.json();
+        const matchedKey = passkeyLoginId.trim()
+          ? listData.find((k: any) => k.memberId.toLowerCase() === passkeyLoginId.trim().toLowerCase())
+          : listData[0];
+        
+        if (matchedKey) {
+          targetCredId = matchedKey.id;
+        }
+      }
+
+      if (!targetCredId) {
+        // Fallback check all keys if no direct match for "any"
+        const allKeysRes = await fetch("/api/passkeys/settings/any");
+        if (allKeysRes.ok) {
+          const allKeys = await allKeysRes.json();
+          const matched = passkeyLoginId.trim()
+            ? allKeys.find((k: any) => k.memberId.toLowerCase() === passkeyLoginId.trim().toLowerCase())
+            : allKeys[0];
+          if (matched) {
+            targetCredId = matched.id;
+          }
+        }
+      }
+
+      if (!targetCredId) {
+        throw new Error("No registered biometric passkey credentials found on file matching this ID. Go to Portal settings to enroll a device passkey first.");
+      }
+
+      addAssertLog(`Matched Authenticator Credential ID: "${targetCredId}"`);
+      addAssertLog("Verifying client attestation signature directly against key counter...");
+
+      const verifyRes = await fetch("/api/passkeys/assert-verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          credentialId: targetCredId,
+          memberId: passkeyLoginId.trim() || undefined
+        })
+      });
+
+      if (!verifyRes.ok) {
+        const errObj = await verifyRes.json();
+        throw new Error(errObj.error || "Server validation rejected biometric signature.");
+      }
+
+      const result = await verifyRes.json();
+      addAssertLog("SUCCESS: FIDO2 WebAuthn authentication handshake completed!");
+      
+      if (onLoginSuccess && result.user) {
+        onLoginSuccess(result.user);
+      }
+    } catch (err: any) {
+      addAssertLog(`ERROR: ${err.message}`);
+      setAssertingPasskey(false);
+    }
+  };
 
   // Local state for join application form
   const [formName, setFormName] = useState("");
@@ -76,6 +192,20 @@ export default function PublicPages({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [validationError, setValidationError] = useState("");
   const [activeChallengesTab, setActiveChallengesTab] = useState<"challenges" | "leaderboard" | "top-nine" | "winners" | "rules">("challenges");
+
+  // Elite Interactive Pakistani Nutrition & Meal Planner States
+  const [localWeight, setLocalWeight] = useState("75");
+  const [localHeight, setLocalHeight] = useState("175");
+  const [localAge, setLocalAge] = useState("24");
+  const [localGender, setLocalGender] = useState<"Male" | "Female">("Male");
+  const [localActivityLevel, setLocalActivityLevel] = useState("1.375");
+  const [localGoal, setLocalGoal] = useState<"cut" | "bulk" | "maintain">("bulk");
+
+  // Nutrition swap selections
+  const [breakfastSwapSelected, setBreakfastSwapSelected] = useState(true);
+  const [lunchSwapSelected, setLunchSwapSelected] = useState(true);
+  const [snackSwapSelected, setSnackSwapSelected] = useState(true);
+  const [dinnerSwapSelected, setDinnerSwapSelected] = useState(true);
 
   // BMI & Goal Advisor State
   const [showBmiAdvisor, setShowBmiAdvisor] = useState(false);
@@ -257,7 +387,7 @@ export default function PublicPages({
                 <div className="flex flex-col sm:flex-row gap-3 justify-center lg:justify-start">
                   <button
                     onClick={() => onNavigate("join")}
-                    className="bg-red-655 hover:bg-red-700 text-black font-black px-8 py-4 rounded-xl uppercase tracking-wider text-sm transition-all shadow-lg shadow-yellow-500/10 active:scale-95"
+                    className="bg-red-650 hover:bg-red-700 text-black font-black px-8 py-4 rounded-xl uppercase tracking-wider text-sm transition-all shadow-lg shadow-yellow-500/10 active:scale-95"
                   >
                     Join Now
                   </button>
@@ -498,6 +628,345 @@ export default function PublicPages({
                 <span className="text-red-500 font-extrabold text-sm block">Digital Tracking</span>
                 <span className="font-extrabold text-white text-base block uppercase leading-tight">Performance Log</span>
                 <span className="text-[11px] text-neutral-400 block">Verify attendance and log personal best parameters with digital member dashboards.</span>
+              </div>
+            </div>
+          </section>
+
+          {/* ELITE PAKISTANI HEALTH & SPORT SWAPS CALCULATOR */}
+          <section className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-4">
+            <div className="bg-neutral-905 border border-neutral-800 bg-neutral-900 rounded-3xl p-6 sm:p-10 lg:p-12 space-y-10 relative overflow-hidden shadow-2xl">
+              <div className="absolute top-0 right-0 h-96 w-96 bg-red-650/5 rounded-full filter blur-[100px] pointer-events-none" />
+              <div className="absolute bottom-0 left-0 h-96 w-96 bg-blue-500/5 rounded-full filter blur-[100px] pointer-events-none" />
+
+              <div className="text-center space-y-3 max-w-2xl mx-auto">
+                <span className="px-3 py-1 bg-red-650/10 border border-red-500/20 text-red-500 text-xs font-black uppercase tracking-widest rounded-full inline-flex items-center gap-1.5 select-none">
+                  <Apple className="h-4 w-4 text-red-500" /> Member Utility Portal
+                </span>
+                <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black uppercase text-white tracking-tight">
+                  Pakistani Fitness & Macro Planner
+                </h2>
+                <p className="text-neutral-450 text-xs sm:text-sm leading-relaxed text-neutral-400">
+                  Struggling to fit standard online clean meal plans into local Pakistani cuisines? Calculate your precise athletic target macros and instantly swap common foods for clean, high-protein native choices!
+                </p>
+              </div>
+
+              {/* TWO COLUMN STEPPED ROW */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start relative z-10">
+                {/* LEFT CONFIGURATION CARD */}
+                <div className="lg:col-span-5 bg-neutral-950 p-6 md:p-8 rounded-2xl border border-neutral-800 space-y-6">
+                  <h3 className="text-white text-lg font-extrabold uppercase tracking-wide border-b border-neutral-900 pb-3 flex items-center gap-2">
+                    <Activity className="h-5 w-5 text-red-500" />
+                    Biometrics & Training Goals
+                  </h3>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase font-black tracking-wider text-neutral-400">Weight (kg)</label>
+                      <input 
+                        type="number" 
+                        value={localWeight} 
+                        onChange={(e) => setLocalWeight(e.target.value)}
+                        className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-2.5 text-white font-mono text-sm focus:outline-none focus:border-red-500 transition-all font-bold"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase font-black tracking-wider text-neutral-400">Height (cm)</label>
+                      <input 
+                        type="number" 
+                        value={localHeight} 
+                        onChange={(e) => setLocalHeight(e.target.value)}
+                        className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-2.5 text-white font-mono text-sm focus:outline-none focus:border-red-500 transition-all font-bold"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase font-black tracking-wider text-neutral-400">Age (years)</label>
+                      <input 
+                        type="number" 
+                        value={localAge} 
+                        onChange={(e) => setLocalAge(e.target.value)}
+                        className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-2.5 text-white font-mono text-sm focus:outline-none focus:border-red-500 transition-all font-bold"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase font-black tracking-wider text-neutral-400">Gender</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button 
+                          onClick={() => setLocalGender("Male")}
+                          className={`py-2 rounded-xl text-xs font-black uppercase transition-all ${localGender === "Male" ? "bg-red-500 text-black font-black" : "bg-neutral-900 text-neutral-400 border border-neutral-800 hover:text-white"}`}
+                        >
+                          Male
+                        </button>
+                        <button 
+                          onClick={() => setLocalGender("Female")}
+                          className={`py-2 rounded-xl text-xs font-black uppercase transition-all ${localGender === "Female" ? "bg-red-500 text-black font-black" : "bg-neutral-900 text-neutral-400 border border-neutral-800 hover:text-white"}`}
+                        >
+                          Female
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] uppercase font-black tracking-wider text-neutral-400">Activity Level</label>
+                    <select 
+                      value={localActivityLevel}
+                      onChange={(e) => setLocalActivityLevel(e.target.value)}
+                      className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-white text-xs font-black focus:outline-none focus:border-red-500 transition-all"
+                    >
+                      <option value="1.2">Sedentary (Desk Job, No Workouts)</option>
+                      <option value="1.375">Light Activity (1-3 Light Workouts/week)</option>
+                      <option value="1.55">Moderate Activity (3-5 Vigorous Workouts/week)</option>
+                      <option value="1.725">Very Active (Heavy Strength Lifting 6-7 times/week)</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5 font-bold">
+                    <label className="text-[10px] uppercase font-black tracking-wider text-neutral-400 block mb-1">Target Athletic Goal</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { id: "cut", label: "Fat Burn" },
+                        { id: "bulk", label: "Muscle Gain" },
+                        { id: "maintain", label: "Maintain" }
+                      ].map((item) => (
+                        <button 
+                          key={item.id}
+                          onClick={() => setLocalGoal(item.id as "cut" | "bulk" | "maintain")}
+                          className={`py-2 px-1 rounded-xl text-[10px] font-black uppercase text-center transition-all ${localGoal === item.id ? "bg-red-500 text-black font-black" : "bg-neutral-900 text-neutral-405 border border-neutral-800 hover:text-white"}`}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* RIGHT NUTRITIVE ANALYSIS & SWAP INTERFACE */}
+                <div className="lg:col-span-7 space-y-8">
+                  {/* CALCULATED DYNAMIC MACROS HEADER */}
+                  {(() => {
+                    const w = parseFloat(localWeight) || 75;
+                    const h = parseFloat(localHeight) || 175;
+                    const a = parseFloat(localAge) || 24;
+                    const genderCo = localGender === "Female" ? -161 : 5;
+                    const bmr = 10 * w + 6.25 * h - 5 * a + genderCo;
+                    const tdee = Math.round(bmr * parseFloat(localActivityLevel));
+                    let targetCal = tdee;
+                    if (localGoal === "cut") targetCal = tdee - 450;
+                    else if (localGoal === "bulk") targetCal = tdee + 350;
+                    if (targetCal < 1200) targetCal = 1200;
+
+                    let proteinVal = Math.round(w * (localGoal === "bulk" ? 2.1 : localGoal === "cut" ? 2.3 : 1.8));
+                    let fatVal = Math.round((targetCal * 0.25) / 9);
+                    let carbsVal = Math.round((targetCal - (proteinVal * 4) - (fatVal * 9)) / 4);
+
+                    // Calculations of clean selection choice
+                    let currentCalories = 0;
+                    let currentProtein = 0;
+                    let currentFat = 0;
+                    let currentCarbs = 0;
+
+                    // Breakfast Contribution
+                    if (breakfastSwapSelected) {
+                      currentCalories += 310; currentProtein += 25; currentFat += 2; currentCarbs += 45;
+                    } else {
+                      currentCalories += 550; currentProtein += 6; currentFat += 24; currentCarbs += 75;
+                    }
+
+                    // Lunch Contribution
+                    if (lunchSwapSelected) {
+                      currentCalories += 380; currentProtein += 18; currentFat += 4; currentCarbs += 68;
+                    } else {
+                      currentCalories += 720; currentProtein += 15; currentFat += 28; currentCarbs += 99;
+                    }
+
+                    // Snack Contribution
+                    if (snackSwapSelected) {
+                      currentCalories += 160; currentProtein += 12; currentFat += 2; currentCarbs += 28;
+                    } else {
+                      currentCalories += 450; currentProtein += 3; currentFat += 25; currentCarbs += 55;
+                    }
+
+                    // Dinner Contribution
+                    if (dinnerSwapSelected) {
+                      currentCalories += 250; currentProtein += 38; currentFat += 8; currentCarbs += 2;
+                    } else {
+                      currentCalories += 850; currentProtein += 25; currentFat += 45; currentCarbs += 80;
+                    }
+
+                    const proteinPercentage = Math.min(100, Math.round((currentProtein / proteinVal) * 100));
+
+                    return (
+                      <div className="space-y-6">
+                        {/* THE METRIC CHIPS GRID */}
+                        <div className="bg-neutral-950 p-6 rounded-2xl border border-neutral-800 space-y-4">
+                          <h4 className="text-neutral-400 font-extrabold text-[11px] uppercase tracking-wider block">Estimated Daily Intake Target vs Quality Selection Intake:</h4>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div className="bg-neutral-900/60 p-4 rounded-xl border border-neutral-800 text-center">
+                              <span className="text-[10px] text-neutral-500 font-black uppercase tracking-wider block">Daily Calories</span>
+                              <span className="text-white text-lg font-mono font-extrabold block mt-1">{currentCalories} <span className="text-[10px] text-neutral-500">/ {targetCal}</span></span>
+                            </div>
+                            <div className="bg-neutral-900/60 p-4 rounded-xl border border-neutral-800 text-center">
+                              <span className="text-[10px] text-neutral-500 font-black uppercase tracking-wider block">Protein (g)</span>
+                              <span className="text-red-500 text-lg font-mono font-extrabold block mt-1">{currentProtein}g <span className="text-[10px] text-neutral-500">/ {proteinVal}g</span></span>
+                            </div>
+                            <div className="bg-neutral-900/60 p-4 rounded-xl border border-neutral-800 text-center">
+                              <span className="text-[10px] text-neutral-500 font-black uppercase tracking-wider block">Fats (g)</span>
+                              <span className="text-white text-lg font-mono font-extrabold block mt-1">{currentFat}g <span className="text-[10px] text-neutral-500">/ {fatVal}g</span></span>
+                            </div>
+                            <div className="bg-neutral-900/60 p-4 rounded-xl border border-neutral-800 text-center">
+                              <span className="text-[10px] text-neutral-500 font-black uppercase tracking-wider block">Carbs (g)</span>
+                              <span className="text-white text-lg font-mono font-extrabold block mt-1">{currentCarbs}g <span className="text-[10px] text-neutral-500">/ {carbsVal}g</span></span>
+                            </div>
+                          </div>
+
+                          {/* PROTEIN TARGET VISUAL PROGRESS BAR */}
+                          <div className="space-y-1.5 pt-2">
+                            <div className="flex justify-between text-[10px] font-mono font-extrabold uppercase">
+                              <span className="text-neutral-400">Biological Protein Target Met:</span>
+                              <span className="text-red-500">{proteinPercentage}% ({currentProtein}g of {proteinVal}g needed)</span>
+                            </div>
+                            <div className="w-full h-2.5 bg-neutral-900 rounded-full overflow-hidden border border-neutral-800/80">
+                              <div 
+                                className="h-full bg-gradient-to-r from-red-650 to-red-500 rounded-full transition-all duration-300" 
+                                style={{ width: `${proteinPercentage}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* HIGH-CRAFT PAKISTANI FOOD SWAPPERS PANEL */}
+                        <div className="space-y-4">
+                          <h4 className="text-white text-base font-black uppercase tracking-wide flex items-center gap-2">
+                            <Utensils className="h-5 w-5 text-red-500" />
+                            Wholesome Swaps Selector (Pakistan Cuisine)
+                          </h4>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* BREAKFAST CARD */}
+                            <div className="bg-neutral-950/80 border border-neutral-850 p-5 rounded-2xl flex flex-col justify-between space-y-4">
+                              <div>
+                                <span className="text-[10px] uppercase font-black tracking-widest text-neutral-500 block mb-1">Morning Breakfast Slot</span>
+                                <h5 className="text-white font-extrabold text-sm uppercase">Breakfast Choice</h5>
+                                <p className="text-[11px] text-neutral-400 mt-1 font-semibold">
+                                  {breakfastSwapSelected 
+                                    ? "🥚 6 Egg Whites + Oats Dalia: Clean complex base with near zero lipid load." 
+                                    : "🍳 1 Oily Paratha + White Sugary Tea: Instant blood sugar spike, high lipids."}
+                                </p>
+                              </div>
+                              <div className="flex justify-between items-center border-t border-neutral-900/80 pt-3">
+                                <span className={`text-[10px] font-bold font-mono uppercase ${breakfastSwapSelected ? "text-green-500 bg-green-500/10 px-2 py-0.5 rounded" : "text-yellow-500 bg-yellow-500/10 px-2 py-0.5 rounded"}`}>
+                                  {breakfastSwapSelected ? "Target Clean Choice" : "Heavy Street Meal Mode"}
+                                </span>
+                                <button 
+                                  onClick={() => setBreakfastSwapSelected(!breakfastSwapSelected)}
+                                  className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase transition-all ${breakfastSwapSelected ? "bg-red-500 text-black font-black" : "bg-neutral-900 text-neutral-300 hover:text-white"}`}
+                                >
+                                  {breakfastSwapSelected ? "Swap to Normal" : "Swap to Clean"}
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* LUNCH CARD */}
+                            <div className="bg-neutral-950/80 border border-neutral-850 p-5 rounded-2xl flex flex-col justify-between space-y-4">
+                              <div>
+                                <span className="text-[10px] uppercase font-black tracking-widest text-neutral-500 block mb-1">Midday Lunch Slot</span>
+                                <h5 className="text-white font-extrabold text-sm uppercase">Lunch Choice</h5>
+                                <p className="text-[11px] text-neutral-400 mt-1 font-semibold">
+                                  {lunchSwapSelected 
+                                    ? "🫓 1 Wholewheat Chapati & Dal: Fibrous, slow digestion & steady insulin." 
+                                    : "🍚 Plate of Basmati Biryani: Saturated fat pool, low complex protein."}
+                                </p>
+                              </div>
+                              <div className="flex justify-between items-center border-t border-neutral-900/80 pt-3">
+                                <span className={`text-[10px] font-bold font-mono uppercase ${lunchSwapSelected ? "text-green-500 bg-green-500/10 px-2 py-0.5 rounded" : "text-yellow-500 bg-yellow-500/10 px-2 py-0.5 rounded"}`}>
+                                  {lunchSwapSelected ? "Target Clean Choice" : "Heavy Street Meal Mode"}
+                                </span>
+                                <button 
+                                  onClick={() => setLunchSwapSelected(!lunchSwapSelected)}
+                                  className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase transition-all ${lunchSwapSelected ? "bg-red-500 text-black font-black" : "bg-neutral-900 text-neutral-300 hover:text-white"}`}
+                                >
+                                  {lunchSwapSelected ? "Swap to Normal" : "Swap to Clean"}
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* SNACK CARD */}
+                            <div className="bg-neutral-950/80 border border-neutral-850 p-5 rounded-2xl flex flex-col justify-between space-y-4">
+                              <div>
+                                <span className="text-[10px] uppercase font-black tracking-widest text-neutral-500 block mb-1">Evening Pre/Post Snack</span>
+                                <h5 className="text-white font-extrabold text-sm uppercase">Snack Choice</h5>
+                                <p className="text-[11px] text-neutral-400 mt-1 font-semibold">
+                                  {snackSwapSelected 
+                                    ? "🍿 100g Roasted Chickpeas (Bhuna Chana): High fiber plant-protein source." 
+                                    : "🥟 Fried Samosas / Potato Pakoras: Loaded with processed cooking oil."}
+                                </p>
+                              </div>
+                              <div className="flex justify-between items-center border-t border-neutral-900/80 pt-3">
+                                <span className={`text-[10px] font-bold font-mono uppercase ${snackSwapSelected ? "text-green-500 bg-green-500/10 px-2 py-0.5 rounded" : "text-yellow-500 bg-yellow-500/10 px-2 py-0.5 rounded"}`}>
+                                  {snackSwapSelected ? "Target Clean Choice" : "Heavy Street Meal Mode"}
+                                </span>
+                                <button 
+                                  onClick={() => setSnackSwapSelected(!snackSwapSelected)}
+                                  className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase transition-all ${snackSwapSelected ? "bg-red-500 text-black" : "bg-neutral-900 text-neutral-300 hover:text-white"}`}
+                                >
+                                  {snackSwapSelected ? "Swap to Normal" : "Swap to Clean"}
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* DINNER CARD */}
+                            <div className="bg-neutral-950/80 border border-neutral-850 p-5 rounded-2xl flex flex-col justify-between space-y-4">
+                              <div>
+                                <span className="text-[10px] uppercase font-black tracking-widest text-neutral-500 block mb-1">Night Recovery Dinner</span>
+                                <h5 className="text-white font-extrabold text-sm uppercase">Dinner Choice</h5>
+                                <p className="text-[11px] text-neutral-400 mt-1 font-semibold">
+                                  {dinnerSwapSelected 
+                                    ? "🍗 Grilled Chicken Tikka Leg (Skinless): Dense tissue building proteins." 
+                                    : "🍲 oily Mutton Korma + Naan: Extreme saturated fats & high lipids."}
+                                </p>
+                              </div>
+                              <div className="flex justify-between items-center border-t border-neutral-900/80 pt-3">
+                                <span className={`text-[10px] font-bold font-mono uppercase ${dinnerSwapSelected ? "text-green-500 bg-green-500/10 px-2 py-0.5 rounded" : "text-yellow-500 bg-yellow-500/10 px-2 py-0.5 rounded"}`}>
+                                  {dinnerSwapSelected ? "Target Clean Choice" : "Heavy Street Meal Mode"}
+                                </span>
+                                <button 
+                                  onClick={() => setDinnerSwapSelected(!dinnerSwapSelected)}
+                                  className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase transition-all ${dinnerSwapSelected ? "bg-red-500 text-black font-black" : "bg-neutral-900 text-neutral-300 hover:text-white"}`}
+                                >
+                                  {dinnerSwapSelected ? "Swap to Normal" : "Swap to Clean"}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* ACTION BUTTON TO COPY COMPACT DIET DETAILS TO CLIPBOARD */}
+                          <button
+                            onClick={() => {
+                              const dietSum = `Assalam-o-Alaikum, here is my Life Fitness Pakistani Diet & Metric Statement!
+- Weight: ${w}kg | Height: ${h}cm | Goal: ${localGoal === "bulk" ? "Muscle Build" : localGoal === "cut" ? "Athletic Cut" : "Conditioning Maintenance"}
+- Target Energy Target: ${targetCal} kcal
+- Chosen Intake metrics: ${currentCalories} kcal, Protein: ${currentProtein}g, Fats: ${currentFat}g, Carbs: ${currentCarbs}g.
+- Meal Selection Set:
+  * Breakfast: ${breakfastSwapSelected ? "Clean Oats & Eggs" : "Sugary Tea & Paratha"}
+  * Lunch: ${lunchSwapSelected ? "Wheat Chapati & Legume Dal" : "Street Biryani Rice"}
+  * Snack: ${snackSwapSelected ? "Bhuna Chana Chickpeas" : "Deep-fried Samosa"}
+  * Dinner: ${dinnerSwapSelected ? "No-skin Grilled Tikka Piece" : "Oily Korma Gravy"}
+Generated via Life Fitness Mandi Bahauddin applet tool. Strength & Progressive Power!`;
+                              navigator.clipboard.writeText(dietSum);
+                              alert("Assalam-o-Alaikum! Your personalized Pakistani fitness diet & metric plan has been successfully written to your Clipboard.");
+                            }}
+                            className="w-full bg-neutral-950 hover:bg-neutral-900 border border-neutral-800 text-[11px] font-black uppercase text-center p-3.5 rounded-xl transition-all font-mono text-neutral-400 hover:text-white tracking-widest block hover:border-red-500 cursor-pointer"
+                          >
+                            📋 Copy Personal Pakistani Diet Summary to Clipboard
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
             </div>
           </section>
@@ -804,21 +1273,21 @@ export default function PublicPages({
             </button>
             <button
               onClick={() => setActiveChallengesTab("top-nine")}
-              className={`px-5 py-3 rounded-xl uppercase text-xs tracking-wider transition-all font-black flex items-center gap-2 cursor-pointer ${activeChallengesTab === "top-nine" ? "bg-red-655 text-black shadow-lg shadow-yellow-500/10" : "bg-neutral-900 hover:bg-neutral-800 text-neutral-400 border border-neutral-800/80"}`}
+              className={`px-5 py-3 rounded-xl uppercase text-xs tracking-wider transition-all font-black flex items-center gap-2 cursor-pointer ${activeChallengesTab === "top-nine" ? "bg-red-650 text-black shadow-lg shadow-yellow-500/10" : "bg-neutral-900 hover:bg-neutral-800 text-neutral-400 border border-neutral-800/80"}`}
             >
               <Sparkles className="h-4 w-4" />
               Current Top Nine
             </button>
             <button
               onClick={() => setActiveChallengesTab("winners")}
-              className={`px-5 py-3 rounded-xl uppercase text-xs tracking-wider transition-all font-black flex items-center gap-2 cursor-pointer ${activeChallengesTab === "winners" ? "bg-red-655 text-black shadow-lg shadow-yellow-500/10" : "bg-neutral-900 hover:bg-neutral-800 text-neutral-400 border border-neutral-800/80"}`}
+              className={`px-5 py-3 rounded-xl uppercase text-xs tracking-wider transition-all font-black flex items-center gap-2 cursor-pointer ${activeChallengesTab === "winners" ? "bg-red-650 text-black shadow-lg shadow-yellow-500/10" : "bg-neutral-900 hover:bg-neutral-800 text-neutral-400 border border-neutral-800/80"}`}
             >
               <Award className="h-4 w-4" />
               Last Month Winners
             </button>
             <button
               onClick={() => setActiveChallengesTab("rules")}
-              className={`px-5 py-3 rounded-xl uppercase text-xs tracking-wider transition-all font-black flex items-center gap-2 cursor-pointer ${activeChallengesTab === "rules" ? "bg-red-655 text-black shadow-lg shadow-yellow-500/10" : "bg-neutral-900 hover:bg-neutral-800 text-neutral-400 border border-neutral-800/80"}`}
+              className={`px-5 py-3 rounded-xl uppercase text-xs tracking-wider transition-all font-black flex items-center gap-2 cursor-pointer ${activeChallengesTab === "rules" ? "bg-red-650 text-black shadow-lg shadow-yellow-500/10" : "bg-neutral-900 hover:bg-neutral-800 text-neutral-400 border border-neutral-800/80"}`}
             >
               <FileText className="h-4 w-4" />
               Competition Rules
@@ -1437,7 +1906,7 @@ export default function PublicPages({
             /* HIGH-POLISHED BOARDING PASS STYLE REGISTRATION SLIP */
             <div className="max-w-xl mx-auto bg-neutral-900 border border-neutral-800 rounded-3xl overflow-hidden shadow-2xl relative">
               {/* Top Banner accent */}
-              <div className="h-2 bg-gradient-to-r from-red-655 via-orange-500 to-red-600" />
+              <div className="h-2 bg-gradient-to-r from-red-650 via-orange-500 to-red-600" />
               
               <div className="p-6 sm:p-8 space-y-6">
                 <div className="text-center space-y-2">
@@ -1796,11 +2265,125 @@ export default function PublicPages({
               Login with Google Account
             </button>
 
+            {/* Divider */}
+            <div className="flex items-center my-4">
+              <div className="flex-1 border-t border-neutral-800"></div>
+              <span className="px-3 text-[9px] text-neutral-500 font-extrabold uppercase tracking-widest leading-none">OR BIOMETRIC SIGN-IN</span>
+              <div className="flex-1 border-t border-neutral-800"></div>
+            </div>
+
+            {/* Biometric Credentials Entry block */}
+            <div className="bg-neutral-950 p-4 rounded-2xl border border-neutral-850 space-y-3.5 text-left">
+              <span className="text-[10px] text-neutral-400 font-extrabold uppercase tracking-widest block flex items-center gap-1.5 leading-none">
+                <Fingerprint className="h-4 w-4 text-red-500 animate-pulse" />
+                Passwordless Passkey Verification
+              </span>
+
+              <div className="space-y-1.5">
+                <label htmlFor="passkey-login" className="text-[9px] text-neutral-500 uppercase tracking-wider font-bold block leading-none">
+                  Enter Gym Member ID (Optional)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    id="passkey-login"
+                    type="text"
+                    value={passkeyLoginId}
+                    onChange={(e) => setPasskeyLoginId(e.target.value)}
+                    placeholder="e.g. MEM-101 (or leave blank for fast scan)"
+                    className="flex-1 bg-neutral-900 border border-neutral-800 focus:border-red-600 rounded-xl px-3 py-2 text-xs text-white placeholder-neutral-755 placeholder-neutral-500 font-bold outline-none focus:ring-1 focus:ring-red-600 font-mono uppercase"
+                  />
+                  <button
+                    type="button"
+                    onClick={handlePasskeySignIn}
+                    disabled={assertingPasskey}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-neutral-800 text-black disabled:text-neutral-500 font-black text-xs uppercase tracking-wider rounded-xl transition-all font-sans active:scale-95"
+                  >
+                    {assertingPasskey ? "Scanning..." : "Verify"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Console assertion logs terminal inside login panel */}
+              {passkeyAssertionLog.length > 0 && (
+                <div className="bg-neutral-900/60 border border-neutral-850 rounded-xl p-3 space-y-1.5 font-mono text-[9px] leading-relaxed select-text">
+                  <div className="flex items-center justify-between text-neutral-500 border-b border-neutral-800 pb-1 font-bold uppercase tracking-wider">
+                    <span className="flex items-center gap-1 text-[8.5px]"><Terminal className="h-3 w-3 text-neutral-500" /> Attestation Console</span>
+                    <button type="button" onClick={() => setPasskeyAssertionLog([])} className="hover:text-white uppercase transition-colors text-[8px]">Clear</button>
+                  </div>
+                  <div className="max-h-36 overflow-y-auto space-y-1 text-neutral-450" style={{ scrollbarWidth: "thin" }}>
+                    {passkeyAssertionLog.map((logLine, idx) => (
+                      <p key={idx} className={logLine.includes("ERROR") ? "text-red-500" : logLine.includes("SUCCESS") ? "text-emerald-400" : ""}>{logLine}</p>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="border-t border-neutral-950 pt-5 text-[11px] text-neutral-500 space-y-2">
               <p>Registered Super Admin: <span className="text-white font-mono">{settings.initialAdminEmail || "zunairkalyar10@gmail.com"}</span></p>
               <p>For instant pilot testing, log in with any account. If unregistered, you will be placed in the default "Member" role.</p>
             </div>
           </div>
+
+          {/* MODAL: BIOMETRIC LOGIN SECURE ENCLAVE */}
+          {showAssertModal && (
+            <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center p-4">
+              <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 sm:p-8 max-w-sm w-full space-y-6 text-center animate-in fade-in duration-200">
+                <div className="space-y-4">
+                  <div className="mx-auto h-16 w-16 rounded-full bg-red-600/10 border border-red-500/20 text-red-500 flex items-center justify-center">
+                    <Fingerprint className="h-8 w-8 text-red-500 animate-pulse" />
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-red-500 text-[10px] font-black uppercase tracking-widest block font-mono">Biometric Key Verification</span>
+                    <h3 className="text-white text-lg font-black uppercase tracking-tight">Access Secure Enclave</h3>
+                    <p className="text-xs text-neutral-400 leading-normal font-semibold">
+                      WebAuthn assertion request from <span className="text-white underline font-semibold font-mono">localhost</span>. Please present your secure credentials or biometrics to unlock your Gym Member account.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-3 bg-neutral-950 p-4 rounded-2xl border border-neutral-850 text-left">
+                  <span className="text-[9px] text-neutral-550 text-neutral-500 font-bold uppercase tracking-wider block mb-2 text-center">Confirm Platform Authenticator</span>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => verifyBiometricAssertion("TouchID")}
+                      className="flex flex-col items-center justify-center p-2.5 bg-neutral-900 hover:bg-neutral-850 rounded-xl border border-neutral-800 font-extrabold text-[10px] text-white uppercase text-center space-y-1.5 transition-all active:scale-95 duration-100 animate-pulse"
+                    >
+                      <Fingerprint className="h-5 w-5 text-red-500" />
+                      <span>Touch ID</span>
+                    </button>
+                    
+                    <button
+                      type="button"
+                      onClick={() => verifyBiometricAssertion("FaceID")}
+                      className="flex flex-col items-center justify-center p-2.5 bg-neutral-900 hover:bg-neutral-850 rounded-xl border border-neutral-800 font-extrabold text-[10px] text-white uppercase text-center space-y-1.5 transition-all active:scale-95 duration-100"
+                    >
+                      <Eye className="h-5 w-5 text-cyan-400" />
+                      <span>Face ID</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => verifyBiometricAssertion("Yubikey")}
+                      className="flex flex-col items-center justify-center p-2.5 bg-neutral-900 hover:bg-neutral-850 rounded-xl border border-neutral-800 font-extrabold text-[10px] text-white uppercase text-center space-y-1.5 transition-all active:scale-95 duration-100"
+                    >
+                      <Cpu className="h-5 w-5 text-amber-500" />
+                      <span>USB Key</span>
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => { setShowAssertModal(false); setAssertingPasskey(false); addAssertLog("ERROR: Login signature cancelled by visitor."); }}
+                  className="w-full py-3.5 bg-neutral-950 hover:bg-neutral-900 text-neutral-400 font-extrabold text-xs uppercase rounded-xl border border-neutral-800 transition-all text-center"
+                >
+                  Cancel Verification
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       );
 

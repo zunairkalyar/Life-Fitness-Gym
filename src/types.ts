@@ -406,3 +406,77 @@ export interface MemberWorkoutExercise {
   order: number;
 }
 
+export interface MemberWhatsAppSettings {
+  id: string;
+  memberId: string;
+  whatsappNumber: string;
+  instanceId: string;
+  remindersEnabled: boolean;
+  timezone: string;
+  workoutReminderTime: string; // e.g. "18:00"
+  attendanceCheckDelayMinutes: number; // e.g. 30
+  attendanceCutoffTime: string; // e.g. "21:00"
+  expectedWorkoutDurationMinutes: number; // e.g. 75
+  completionFollowupDelayMinutes: number; // e.g. 15
+  preferredLanguage: "en" | "ur";
+  lastMessageStatus?: "none" | "sent" | "delivered" | "failed";
+  lastMessageDate?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MemberWorkoutSession {
+  id: string; // e.g. "memberId:workoutDate"
+  memberId: string;
+  workoutPlanId: string;
+  workoutDate: string; // e.g. "2026-06-17"
+  workoutName: string;
+  scheduledTime: string; // e.g. "18:00"
+  reminderSentAt?: string;
+  attendanceQuestionSentAt?: string;
+  plannedAttendanceResponse?: "coming" | "cannot_come" | "unknown";
+  checkInTime?: string;
+  checkOutTime?: string;
+  completionQuestionSentAt?: string;
+  completionResponse?: "completed" | "partially_completed" | "not_completed";
+  completedAt?: string;
+  status: "scheduled" | "reminder_sent" | "planning_to_attend" | "checked_in" | "workout_completed" | "workout_incomplete" | "absent" | "excused" | "skipped" | "message_failed";
+  isLateAttendance: boolean;
+  absenceRecordedAt?: string;
+  messageFailureReason?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WhatsAppAutomationLog {
+  id: string;
+  memberId: string;
+  workoutSessionId: string;
+  automationType: string; // "daily-workout" | "attendance-question" | "completion-question" | "absence-notification"
+  destinationNumber: string;
+  messageType: "text" | "button";
+  messageContent: string;
+  provider: string; // "waalerts"
+  providerRequestId?: string;
+  requestPayloadSanitized: string;
+  responsePayload: string;
+  status: "success" | "failed";
+  errorMessage?: string;
+  attemptNumber: number;
+  sentAt: string;
+  deliveredAt?: string;
+  createdAt: string;
+}
+
+export interface MemberPasskey {
+  id: string; // Key ID / Credentials ID
+  memberId: string;
+  name: string;
+  publicKey: string; // JWK or Base64 representation of WebAuthn public key
+  counter: number;
+  transports?: string[];
+  deviceType?: string; // e.g. "TouchID", "FaceID", "Yubikey"
+  createdAt: string;
+}
+
+

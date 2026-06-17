@@ -298,6 +298,23 @@ export default function App() {
     alert(`CSV downloaded: ${ref}_register_export_2026.csv`);
   };
 
+  const handlePasskeyLoginSuccess = (user: UserProfile) => {
+    if (user.role === "member") {
+      const matchEmail = user.email;
+      const matched = [...members, ...demoMembers].find(m => m.email === matchEmail);
+      const targetId = matched?.id || "MEM-101";
+
+      localStorage.setItem("temp_portal_m_id", targetId);
+      setCurrentUser(user);
+      logAction("Biometric Passkey Authentication Login", user.name, `Member checked digital ID ${targetId}`);
+      setCurrentView("member-portal");
+    } else {
+      setCurrentUser(user);
+      logAction("Staff Biometric Authentication Login", user.name, `${user.role} unlocked control dashboard via Passkey assertion`);
+      setCurrentView("admin");
+    }
+  };
+
   // Switch navigation blocks
   const renderPrimaryRouteComponent = () => {
     switch (currentView) {
@@ -386,6 +403,7 @@ export default function App() {
             pastWinners={pastWinners}
             announcements={announcements}
             memberList={members}
+            attendance={attendance}
             onExit={() => setCurrentView("leaderboard")}
           />
         );
@@ -404,6 +422,7 @@ export default function App() {
             onApply={handleApplySubmission}
             onTriggerGoogleLogin={handleTriggerGoogleLogin}
             lang={lang}
+            onLoginSuccess={handlePasskeyLoginSuccess}
           />
         );
     }
