@@ -69,6 +69,7 @@ import GainsCalculator from "../components/GainsCalculator";
 import GymSoundboard from "../components/GymSoundboard";
 import EquipmentFloorMap from "../components/EquipmentFloorMap";
 import GymTrafficHeatmap from "../components/GymTrafficHeatmap";
+import MemberWorkoutDashboard from "../components/MemberWorkoutDashboard";
 
 interface MemberPortalProps {
   member: Member;
@@ -93,10 +94,18 @@ export default function MemberPortal({
   onLogout,
   onUpdateMember
 }: MemberPortalProps) {
-  const [activeSection, setActiveSection] = useState<"dashboard" | "ai-coach" | "exercises" | "diet" | "community" | "soundboard" | "equipment" | "traffic">("dashboard");
+  const [activeSection, setActiveSection] = useState<"dashboard" | "ai-coach" | "exercises" | "diet" | "community" | "soundboard" | "equipment" | "traffic" | "workouts">("dashboard");
   const [showProfileEditor, setShowProfileEditor] = useState(false);
   const [waLogs, setWaLogs] = useState<any[]>([]);
   const [waSettings, setWaSettings] = useState<any | null>(null);
+
+  // Auto-redirect to Workouts tab if flagged by WhatsApp secure link parser
+  useEffect(() => {
+    if (sessionStorage.getItem("lf_redirect_to_workouts") === "true") {
+      sessionStorage.removeItem("lf_redirect_to_workouts");
+      setActiveSection("workouts");
+    }
+  }, []);
 
   // Biometric Passkey state managers
   const [passkeys, setPasskeys] = useState<any[]>([]);
@@ -1360,10 +1369,10 @@ export default function MemberPortal({
       </div>
 
       {/* PORTAL SECTION TABS */}
-      <div className="flex border-b border-neutral-900 text-xs uppercase font-black tracking-widest text-neutral-450 gap-6 shrink-0 mt-2">
+      <div className="flex border-b border-neutral-900 text-xs uppercase font-black tracking-widest text-neutral-450 gap-6 shrink-0 mt-2 overflow-x-auto scrollbar-hide">
         <button
           onClick={() => setActiveSection("dashboard")}
-          className={`pb-3.5 border-b-2 px-1 transition-all flex items-center gap-2 cursor-pointer ${
+          className={`pb-3.5 border-b-2 px-1 transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
             activeSection === "dashboard"
               ? "border-red-655 border-red-600 text-white font-black"
               : "border-transparent text-neutral-550 text-neutral-500 hover:text-white"
@@ -1373,8 +1382,19 @@ export default function MemberPortal({
           My Member Space
         </button>
         <button
+          onClick={() => setActiveSection("workouts")}
+          className={`pb-3.5 border-b-2 px-1 transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+            activeSection === "workouts"
+              ? "border-red-600 text-white font-black"
+              : "border-transparent text-neutral-500 hover:text-white"
+          }`}
+        >
+          <Flame className="h-4 w-4 text-red-500 animate-pulse" />
+          My Workout Plan
+        </button>
+        <button
           onClick={() => setActiveSection("ai-coach")}
-          className={`pb-3.5 border-b-2 px-1 transition-all flex items-center gap-2 cursor-pointer ${
+          className={`pb-3.5 border-b-2 px-1 transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
             activeSection === "ai-coach"
               ? "border-red-655 border-red-600 text-white font-black"
               : "border-transparent text-neutral-550 text-neutral-500 hover:text-white"
@@ -3511,6 +3531,10 @@ export default function MemberPortal({
             </div>
 
           </div>
+        </div>
+      ) : activeSection === "workouts" ? (
+        <div className="animate-fade-in text-white/90">
+          <MemberWorkoutDashboard memberId={member.id} />
         </div>
       ) : activeSection === "equipment" ? (
         <div className="animate-fade-in text-white/90">

@@ -1,0 +1,22 @@
+[
+  {
+    "id": "log-101",
+    "equipment_id": "leg_extension_leg_curl",
+    "type": "preventative",
+    "technician": "Sarah Carter",
+    "cost": 85.00,
+    "date": "2026-05-18",
+    "status": "completed",
+    "notes": "Lubricated guide rods and verified weight selector pin functionality. Cushion condition is fair."
+  },
+  {
+    "id": "log-102",
+    "equipment_id": "treadmill",
+    "type": "diagnostic",
+    "technician": "David Miller",
+    "cost": 120.00,
+    "date": "2026-06-01",
+    "status": "completed",
+    "notes": "Adjusted walking belt tension and tracking on Treadmill Station A. Calibrated speed dial."
+  }
+]

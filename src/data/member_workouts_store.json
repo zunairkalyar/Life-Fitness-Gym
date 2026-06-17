@@ -1,0 +1,83 @@
+[
+  {
+    "id": "plan-kfc-101",
+    "memberId": "KFC-101",
+    "title": "Hypertrophy Chest & Arms Split",
+    "startDate": "2026-06-01",
+    "endDate": "2026-08-31",
+    "editPermission": "limited",
+    "exercises": [
+      {
+        "id": "ex-1",
+        "name": "Barbell Bench Press",
+        "sets": 4,
+        "reps": "8-10",
+        "weight": "80 KG",
+        "rest": "90s",
+        "imageUrl": "https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?auto=format&fit=crop&q=80&w=350",
+        "notes": "Keep shoulders retracted and flat.",
+        "coachInstructions": "Focus on rapid eccentric release followed by slow controlled concentric press."
+      },
+      {
+        "id": "ex-2",
+        "name": "Incline Dumbbell Flys",
+        "sets": 3,
+        "reps": "10-12",
+        "weight": "24 KG",
+        "rest": "60s",
+        "imageUrl": "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&q=80&w=350",
+        "notes": "Maintain slight bend in elbows.",
+        "coachInstructions": "Stretch deeply at bottom, squeeze chest at top."
+      },
+      {
+        "id": "ex-3",
+        "name": "Triceps Pushdowns (Cable)",
+        "sets": 4,
+        "reps": "12-15",
+        "weight": "35 KG",
+        "rest": "45s",
+        "imageUrl": "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?auto=format&fit=crop&q=80&w=350",
+        "notes": "Keep chest high, elbows pinned to sides.",
+        "coachInstructions": "Hold contraction for 1 sec at the bottom."
+      }
+    ],
+    "history": [],
+    "createdAt": "2026-06-15T10:00:00Z",
+    "updatedAt": "2026-06-15T10:00:00Z"
+  },
+  {
+    "id": "plan-kfc-102",
+    "memberId": "KFC-102",
+    "title": "Strength & Back Conditioning",
+    "startDate": "2026-06-10",
+    "endDate": "2026-09-10",
+    "editPermission": "full",
+    "exercises": [
+      {
+        "id": "ex-4",
+        "name": "Bodyweight Pull-Up",
+        "sets": 4,
+        "reps": "8-10",
+        "weight": "Bodyweight",
+        "rest": "90s",
+        "imageUrl": "https://images.unsplash.com/photo-1598971639058-fab3c3109a00?auto=format&fit=crop&q=80&w=350",
+        "notes": "Clean chin-over-bar reps.",
+        "coachInstructions": "Control the negative phase fully."
+      },
+      {
+        "id": "ex-5",
+        "name": "Barbell Deadlift",
+        "sets": 3,
+        "reps": "5",
+        "weight": "120 KG",
+        "rest": "120s",
+        "imageUrl": "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&q=80&w=350",
+        "notes": "Keep neutral back, push through heels.",
+        "coachInstructions": "Use double overhand grip as long as possible."
+      }
+    ],
+    "history": [],
+    "createdAt": "2026-06-15T11:00:00Z",
+    "updatedAt": "2026-06-15T11:00:00Z"
+  }
+]

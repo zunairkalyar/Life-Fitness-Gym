@@ -1,0 +1,14 @@
+[
+  { "equipment_id": "squat_barbell_rack", "exercise_ids": ["barbell_squat"] },
+  { "equipment_id": "seated_chest_press", "exercise_ids": ["machine_chest_press"] },
+  { "equipment_id": "lat_pulldown_low_row", "exercise_ids": ["lat_pulldown"] },
+  { "equipment_id": "biceps_preacher_curl_machine", "exercise_ids": ["machine_preacher_curl"] },
+  { "equipment_id": "triceps_dip_press_machine", "exercise_ids": ["machine_dip"] },
+  { "equipment_id": "flat_bench_press_station", "exercise_ids": ["barbell_bench_press"] },
+  { "equipment_id": "incline_bench_press_station", "exercise_ids": ["incline_barbell_press"] },
+  { "equipment_id": "t_bar_row_machine", "exercise_ids": ["t_bar_row"] },
+  { "equipment_id": "shoulder_press_machine", "exercise_ids": ["machine_shoulder_press"] },
+  { "equipment_id": "roman_chair_hyperextension", "exercise_ids": ["back_extension"] },
+  { "equipment_id": "arm_wrestling_training_table", "exercise_ids": ["arm_wrestling_practice"] },
+  { "equipment_id": "battle_rope_setup", "exercise_ids": ["battle_rope_waves"] }
+]

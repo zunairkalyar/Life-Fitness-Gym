@@ -8,6 +8,10 @@ const PORT = 3000;
 
 app.use(express.json({ limit: "50mb" }));
 
+// Security Protection Middlewares registered specifically for APIs
+app.use("/api", rateLimiterMiddleware);
+app.use("/api", csrfProtectionMiddleware);
+
 // ==========================================
 // MUSCELWIKI INTEGRATION & MOCK DATABASE
 // ==========================================
@@ -1092,7 +1096,7 @@ ${context.competitionSummary ? JSON.stringify(context.competitionSummary) : "No 
 ROLE & RECOMENDATION PROTOCOL:
 - You are the premium Life Fitness AI Personal Coach. Suggest appropriate MuscleWiki-based exercise routines.
 - If a member has specified any health injuries, discomforts, or pain boundaries (e.g., lower back stiffness, knee pain), you MUST strictly avoid chest exercises, shoulder flyes, or heavy compound squats that aggravate those regions.
-- Limit recommeded exercises to maximum 5 in any turn.
+- Limit recommended exercises to maximum 5 in any turn.
 - When suggesting specific exercises, you MUST FORMAT THEM IN AS CUSTOM TAGS SO THE CLIENT INTERFACE RENDS AN INTERACTIVE ATHLETIC CARD DIRECTLY.
 - Format syntax exactly as:
   [EXERCISE:{"id":"exercise_id_or_mw_id","name":"Exercise Name","muscle":"Body Target","equipment":"Machine/Barbell/etc","difficulty":"Beginner/etc","reason":"Personalized benefit why recommended"}]
@@ -1100,7 +1104,33 @@ ROLE & RECOMENDATION PROTOCOL:
 - Support physical warnings: If severe chest tightness, acute sharp joint locks, hyperventilation, dizziness or fainting thresholds are reported during workouts, command stopping immediately and consulting medical professionals.
 `;
 
-    const combinedSystemInstruction = `${systemInstruction}\n\n[MEMBER SPECIFIC CONTEXT]\nYou are chatting securely with ${context.fullName || "this member"}. You MUST keep all answers contextualized to this individual:\n${memberContextBlock}\n\n${instructionsAnnex}\n\nRemember to respect safety precautions. If any physical boundaries, injuries or limitations exist, strictly avoid matching exercises that impact it. Always speak in a helpful, supportive, highly motivational tone. Avoid medical diagnosis. Suggest a qualified trainer or physician for complex medical queries. Keep responses structured (using Markdown).`;
+    // Load official live equipment and inventory configuration
+    const activeEquipmentList = loadJsonFile<any[]>(EQUIPMENT_FILE, []);
+    const liveInventoryConf = loadJsonFile<any>(INVENTORY_FILE, {});
+
+    const gymEquipmentPromptInfo = activeEquipmentList.map(e => {
+      return `- ID: ${e.equipment_id} | Name: "${e.canonical_name}" | Aliases: [${(e.aliases || []).join(', ')}] | Status: "${e.status}" | Workout Eligible: ${e.workout_eligible} | Qty: ${e.quantity} | Muscle Target: [${(e.primary_muscle_groups || []).join(', ')}]`;
+    }).join('\n');
+
+    const liveInventoryPromptInfo = JSON.stringify(liveInventoryConf || {});
+
+    const officialEquipmentInstruction = `
+[OFFICIAL LIFE FITNESS EQUIPMENT INVENTORY (LIVE DATABASE)]
+Below is the live registered equipment currently on our gym floor.
+- You are strictly FORBIDDEN from recommending or using any machines, weights, or equipment that are NOT registered in this list or marked as eligible.
+- You MUST check the status of each equipment: Do NOT suggest any exercises using equipment marked with any status other than "active" (e.g. do NOT recommend if status is "under_maintenance", "out_of_service", "temporarily_unavailable", or "removed").
+- If the required machine is busy (high load), unavailable, or under maintenance, look up the alternatives map and suggest the closest available alternative using "active" equipment.
+- Check free-weight resources list: Only use barbell, dumbbells, or ez-bar if they are confirmed as available in the supporting resources matrix below.
+- Do not make up mock equipment. Represent each piece of hardware accurately.
+
+ACTIVE EQUIPMENT INVENTORY DATA:
+${gymEquipmentPromptInfo}
+
+SUPPORTING FREE WEIGHT & INVENTORY RESOURCES:
+${liveInventoryPromptInfo}
+`;
+
+    const combinedSystemInstruction = `${systemInstruction}\n\n[MEMBER SPECIFIC CONTEXT]\nYou are chatting securely with ${context.fullName || "this member"}. You MUST keep all answers contextualized to this individual:\n${memberContextBlock}\n\n${instructionsAnnex}\n\n${officialEquipmentInstruction}\n\nRemember to respect safety precautions. If any physical boundaries, injuries or limitations exist, strictly avoid matching exercises that impact it. Always speak in a helpful, supportive, highly motivational tone. Avoid medical diagnosis. Suggest a qualified trainer or physician for complex medical queries. Keep responses structured (using Markdown).`;
 
     // Function declarations for Gemini calls
     const toolsConfig = {
@@ -1290,6 +1320,68 @@ const SETTINGS_FILE = path.join(process.cwd(), "src/data/whatsapp_settings_store
 const SESSIONS_FILE = path.join(process.cwd(), "src/data/whatsapp_sessions_store.json");
 const LOGS_FILE = path.join(process.cwd(), "src/data/whatsapp_logs_store.json");
 const PASSKEYS_FILE = path.join(process.cwd(), "src/data/passkeys_store.json");
+const WORKOUTS_FILE = path.join(process.cwd(), "src/data/member_workouts_store.json");
+
+const EQUIPMENT_FILE = path.join(process.cwd(), "src/data/equipment.json");
+const EXERCISES_FILE = path.join(process.cwd(), "src/data/exercises.json");
+const MAPPING_FILE = path.join(process.cwd(), "src/data/equipment_exercise_mapping.json");
+const INVENTORY_FILE = path.join(process.cwd(), "src/data/gym_equipment_inventory.json");
+const MAINTENANCE_FILE = path.join(process.cwd(), "src/data/equipment_maintenance_logs.json");
+const REPORTS_FILE = path.join(process.cwd(), "src/data/equipment_reports.json");
+
+// Rate limit map
+const rateLimits = new Map<string, { count: number; resetTime: number }>();
+const RATE_LIMIT_WINDOW = 60 * 1000;
+const RATE_LIMIT_MAX = 100;
+
+// Rate limiting middleware
+function rateLimiterMiddleware(req: any, res: any, next: any) {
+  const ip = req.ip || req.headers["x-forwarded-for"] || "unknown";
+  const now = Date.now();
+  let limit = rateLimits.get(ip);
+  if (!limit || now > limit.resetTime) {
+    limit = { count: 1, resetTime: now + RATE_LIMIT_WINDOW };
+    rateLimits.set(ip, limit);
+  } else {
+    limit.count++;
+  }
+  res.setHeader("X-RateLimit-Limit", RATE_LIMIT_MAX);
+  res.setHeader("X-RateLimit-Remaining", Math.max(0, RATE_LIMIT_MAX - limit.count));
+  if (limit.count > RATE_LIMIT_MAX) {
+    return res.status(429).json({ error: "Too many requests. Please try again in an hour." });
+  }
+  next();
+}
+
+// Custom lightweight CSRF protection middleware for state-changing endpoints
+function csrfProtectionMiddleware(req: any, res: any, next: any) {
+  const method = req.method;
+  if (["POST", "PUT", "DELETE"].includes(method)) {
+    const origin = req.headers.origin;
+    const referer = req.headers.referer;
+    const host = req.headers.host;
+    const csrfHeader = req.headers["x-csrf-token"];
+    
+    // Check if referrer exists and is from a completely foreign domain
+    if (!csrfHeader && origin && referer && !referer.includes(host)) {
+      return res.status(403).json({ error: "CSRF verification failed. Request untrusted." });
+    }
+  }
+  next();
+}
+
+// Session parser helper reading secure HTTP-only lf_session cookie
+function getSessionUser(req: any): any | null {
+  const cookieHeader = req.headers.cookie || "";
+  const match = cookieHeader.match(/lf_session=([^;]+)/);
+  if (!match) return null;
+  try {
+    const jsonStr = Buffer.from(decodeURIComponent(match[1]), "base64").toString("utf-8");
+    return JSON.parse(jsonStr);
+  } catch (e) {
+    return null;
+  }
+}
 
 // Active challenges in-memory map (expires in 10 mins)
 const activeChallenges = new Map<string, { challenge: string; expires: number }>();
@@ -1660,11 +1752,17 @@ export async function triggerDailySchedulerTick(
             { name: "Triceps Pushdowns", sets: 3, reps: "12-15", rest: "45s" }
           ]
         };
-        const exLines = plan.exercises.map((ex: any, idx: number) => {
-          return `${idx + 1}. ${ex.name}\n   Sets: ${ex.sets} | Reps: ${ex.reps} | Rest: ${ex.rest || "60s"}`;
-        }).join("\n\n");
+        const appUrl = (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, "");
+        const member_workout_portal_url = `${appUrl}/?view=member-workouts`;
 
-        const messageContent = `🏋️ Life Fitness — Today’s Workout\n\nHello ${member.fullName},\n\nYour workout for today is:\n\n🔥 ${session.workoutName}\n\n${exLines}\n\nStay focused and complete every set properly. 💪\n\nYour scheduled gym time is ${session.scheduledTime}.`;
+        const messageContent = `Your workout is ready 💪
+
+Today’s workout plan is available in your Life Fitness Member Portal.
+
+Open your workout here:
+${member_workout_portal_url}
+
+Log in using your registered account. Once logged in, you will remain signed in on this device and can directly view your workouts from future reminders.`;
 
         try {
           await sendWaAlertsText(
@@ -2366,7 +2464,7 @@ function startBackgroundAutomationScheduler() {
         currentHourMinStr,
         membersToVerify,
         gymSettings,
-        [] // empty workoutPlansList fallback to autogenerate
+        loadJsonFile<any[]>(WORKOUTS_FILE, [])
       );
       
       if (tickLogs && tickLogs.length > 1) {
@@ -2379,6 +2477,734 @@ function startBackgroundAutomationScheduler() {
   }, 60000);
 }
 
+
+// ==========================================
+// SECURE WORKOUT PLANS & SESSIONS API ENDPOINTS
+// ==========================================
+
+// Helper to generate a secure random non-sequential string ID
+function generateSecureId(prefix = "pw"): string {
+  return `${prefix}-${Math.random().toString(36).substring(2, 10)}${Math.random().toString(36).substring(2, 10)}`;
+}
+
+// RESTful Authentication Session Endpoints
+app.post("/api/auth/session", (req, res) => {
+  const { user } = req.body;
+  if (!user || !user.uid || !user.role) {
+    return res.status(400).json({ error: "Invalid user details provided" });
+  }
+  
+  // Set memberId explicitly on the backend auth package if mapped
+  let mappedId = user.memberId;
+  if (user.role === "member" && !mappedId) {
+    if (user.email === "member1@kalyarfitness.com") {
+      mappedId = "KFC-101";
+    } else if (user.email === "member2@kalyarfitness.com") {
+      mappedId = "KFC-102";
+    } else {
+      mappedId = "KFC-101"; // default
+    }
+  }
+  
+  const finalUser = { ...user, memberId: mappedId };
+  const token = Buffer.from(JSON.stringify(finalUser)).toString("base64");
+  
+  res.setHeader(
+    "Set-Cookie",
+    `lf_session=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000;${
+      process.env.NODE_ENV === "production" ? " Secure;" : ""
+    }`
+  );
+  return res.json({ success: true, user: finalUser });
+});
+
+app.get("/api/auth/session", (req, res) => {
+  const user = getSessionUser(req);
+  if (!user) {
+    return res.status(401).json({ error: "Unauthorized: No active session cookie established." });
+  }
+  return res.json({ user });
+});
+
+app.post("/api/auth/logout", (req, res) => {
+  res.setHeader(
+    "Set-Cookie",
+    `lf_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT;${
+      process.env.NODE_ENV === "production" ? " Secure;" : ""
+    }`
+  );
+  return res.json({ success: true });
+});
+
+// Member Workout Plan CRUD Operations
+app.get("/api/member/workouts", (req, res) => {
+  const user = getSessionUser(req);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+  const plans = loadJsonFile<any[]>(WORKOUTS_FILE, []);
+  
+  if (user.role === "member") {
+    // SECURITY CONSTRAINT: Must only retrieve their own workout
+    const memberId = user.memberId || "KFC-101";
+    let plan = plans.find(p => p.memberId === memberId);
+    if (!plan) {
+      // Auto-initialize a default workout plan for safety
+      plan = {
+        id: generateSecureId("plan"),
+        memberId: memberId,
+        title: "Standard Full Body Conditioning",
+        startDate: new Date().toISOString().split("T")[0],
+        endDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+        editPermission: "limited",
+        exercises: [
+          {
+            id: generateSecureId("ex"),
+            name: "Barbell Squats",
+            sets: 4,
+            reps: "8-10",
+            weight: "60 KG",
+            rest: "90s",
+            notes: "Focus on depth."
+          },
+          {
+            id: generateSecureId("ex"),
+            name: "Push-Ups",
+            sets: 3,
+            reps: "15",
+            weight: "Bodyweight",
+            rest: "60s",
+            notes: "Strict form."
+          }
+        ],
+        history: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      plans.push(plan);
+      saveJsonFile(WORKOUTS_FILE, plans);
+    }
+    return res.json([plan]);
+  } else {
+    // Trainer/Admin can retrieve all or filter by query
+    const mId = req.query.memberId;
+    if (mId) {
+      const match = plans.find(p => p.memberId === mId);
+      return res.json(match ? [match] : []);
+    }
+    return res.json(plans);
+  }
+});
+
+app.post("/api/member/workouts", (req, res) => {
+  const user = getSessionUser(req);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+  const { memberId, title, editPermission, exercises, startDate, endDate } = req.body;
+  
+  // Security checks
+  const targetMemberId = user.role === "member" ? (user.memberId || "KFC-101") : memberId;
+  if (!targetMemberId) return res.status(400).json({ error: "Member ID is required" });
+  
+  if (user.role === "member" && targetMemberId !== user.memberId) {
+    return res.status(403).json({ error: "403 Forbidden: You can only build workout plans for yourself." });
+  }
+
+  const plans = loadJsonFile<any[]>(WORKOUTS_FILE, []);
+  
+  // Clean structure
+  const cleanExercises = (exercises || []).map((ex: any) => ({
+    id: ex.id || generateSecureId("ex"),
+    name: ex.name,
+    sets: Number(ex.sets) || 3,
+    reps: String(ex.reps || "10"),
+    weight: String(ex.weight || "Bodyweight"),
+    rest: String(ex.rest || "60s"),
+    imageUrl: ex.imageUrl,
+    videoUrl: ex.videoUrl,
+    notes: ex.notes || "",
+    coachInstructions: ex.coachInstructions || ""
+  }));
+
+  const newPlan = {
+    id: generateSecureId("plan"),
+    memberId: targetMemberId,
+    title: title || "New Custom Split",
+    startDate: startDate || new Date().toISOString().split("T")[0],
+    endDate: endDate || new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+    editPermission: user.role === "member" ? "full" : (editPermission || "limited"),
+    exercises: cleanExercises,
+    history: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+
+  plans.push(newPlan);
+  saveJsonFile(WORKOUTS_FILE, plans);
+  return res.json({ success: true, plan: newPlan });
+});
+
+app.put("/api/member/workouts/:id", (req, res) => {
+  const user = getSessionUser(req);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+  const plans = loadJsonFile<any[]>(WORKOUTS_FILE, []);
+  const planIndex = plans.findIndex(p => p.id === req.params.id);
+  if (planIndex === -1) {
+    return res.status(404).json({ error: "Workout plan not found" });
+  }
+  const plan = plans[planIndex];
+
+  // Admin/Coach override, or check Member ownership
+  if (user.role === "member") {
+    if (plan.memberId !== user.memberId) {
+      return res.status(403).json({ error: "403 Forbidden: Access denied to other member plans." });
+    }
+
+    // Role Edit Locks Check
+    const lockMode = plan.editPermission || "full";
+    if (lockMode === "locked") {
+      return res.status(403).json({ error: "403 Forbidden: Coach locked! This card is view-only." });
+    } else if (lockMode === "limited") {
+      // Can only change: sets, reps, weight, rest, notes, completion.
+      // CANNOT add, remove, replace, or reorder.
+      const incoming = req.body.exercises || [];
+      const current = plan.exercises || [];
+      
+      if (incoming.length !== current.length) {
+        return res.status(403).json({ error: "403 Forbidden: Limited permission inhibits add/remove structure edits." });
+      }
+      
+      for (let i = 0; i < current.length; i++) {
+        if (incoming[i].id !== current[i].id || incoming[i].name !== current[i].name) {
+          return res.status(403).json({ error: "403 Forbidden: Limited permission. Exercise sequence or elements cannot be replaced/reordered." });
+        }
+      }
+    }
+  }
+
+  // Back up current version to history
+  const historyNode = {
+    versionId: generateSecureId("ver"),
+    updatedBy: user.role === "member" ? "member" : "coach",
+    updatedAt: new Date().toISOString(),
+    exercises: JSON.parse(JSON.stringify(plan.exercises)),
+    note: req.body.changeNote || `Updated by ${user.name}`
+  };
+  plan.history = plan.history || [];
+  plan.history.push(historyNode);
+
+  // Trigger coach alert logs on Significant full-edit alterations
+  if (user.role === "member" && plan.editPermission === "full") {
+    const incoming = req.body.exercises || [];
+    const current = plan.exercises || [];
+    let isSignificantChange = false;
+    if (incoming.length !== current.length) {
+      isSignificantChange = true;
+    } else {
+      for (let i = 0; i < current.length; i++) {
+        if (incoming[i].name !== current[i].name || incoming[i].sets !== current[i].sets) {
+          isSignificantChange = true;
+          break;
+        }
+      }
+    }
+
+    if (isSignificantChange) {
+      // Append an urgent audit alteration warning
+      const auditFilePath = path.join(process.cwd(), "src/data/audits_store.json");
+      const currentAudits = loadJsonFile<any[]>(auditFilePath, []);
+      const alertLog = {
+        id: `log-sig-${Date.now()}`,
+        userId: user.uid,
+        userName: user.name,
+        action: "Significant Workout Alteration Alert",
+        details: `Member ${user.name} (${user.memberId}) made core changes to plan '${plan.title}'. Sequence elements altered. Version compiled & archived in safety vault logs.`,
+        createdAt: new Date().toISOString()
+      };
+      currentAudits.unshift(alertLog);
+      saveJsonFile(auditFilePath, currentAudits);
+      console.log(`[ALERT] Significant Workout Alteration recorded for member ${user.memberId}!`);
+    }
+  }
+
+  // Update fields
+  plan.title = req.body.title || plan.title;
+  plan.exercises = req.body.exercises || plan.exercises;
+  
+  // Admin-only permission updates
+  if (user.role !== "member") {
+    plan.editPermission = req.body.editPermission || plan.editPermission;
+    plan.startDate = req.body.startDate || plan.startDate;
+    plan.endDate = req.body.endDate || plan.endDate;
+    plan.memberId = req.body.memberId || plan.memberId;
+  }
+  
+  plan.updatedAt = new Date().toISOString();
+  plans[planIndex] = plan;
+  
+  saveJsonFile(WORKOUTS_FILE, plans);
+  return res.json({ success: true, plan });
+});
+
+app.post("/api/member/workouts/:id/restore", (req, res) => {
+  const user = getSessionUser(req);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+  const { versionId } = req.body;
+  if (!versionId) return res.status(400).json({ error: "Version ID is required" });
+
+  const plans = loadJsonFile<any[]>(WORKOUTS_FILE, []);
+  const planIndex = plans.findIndex(p => p.id === req.params.id);
+  if (planIndex === -1) return res.status(404).json({ error: "Plan not found" });
+  
+  const plan = plans[planIndex];
+  if (user.role === "member" && plan.memberId !== user.memberId) {
+    return res.status(403).json({ error: "403 Forbidden" });
+  }
+
+  const ver = plan.history?.find((h: any) => h.versionId === versionId);
+  if (!ver) return res.status(404).json({ error: "Target version not found" });
+
+  // Backup current exercises
+  const currentBackup = {
+    versionId: generateSecureId("ver"),
+    updatedBy: user.role === "member" ? "member" : "coach",
+    updatedAt: new Date().toISOString(),
+    exercises: JSON.parse(JSON.stringify(plan.exercises)),
+    note: `Archived automatically before restoring version ${versionId}`
+  };
+  plan.history.push(currentBackup);
+
+  // Restore fields
+  plan.exercises = ver.exercises;
+  plan.updatedAt = new Date().toISOString();
+
+  plans[planIndex] = plan;
+  saveJsonFile(WORKOUTS_FILE, plans);
+  return res.json({ success: true, plan });
+});
+
+// Member Daily Workout Session Tracker Operations
+app.get("/api/member/sessions", (req, res) => {
+  const user = getSessionUser(req);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+  const sessions = loadJsonFile<any[]>(SESSIONS_FILE, defaultWorkoutSessions);
+  if (user.role === "member") {
+    const memberId = user.memberId || "KFC-101";
+    const filtered = sessions.filter(s => s.memberId === memberId);
+    return res.json(filtered);
+  }
+  return res.json(sessions);
+});
+
+app.post("/api/member/sessions/today/open", (req, res) => {
+  const user = getSessionUser(req);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+  const memberId = user.role === "member" ? (user.memberId || "KFC-101") : req.body.memberId;
+  if (!memberId) return res.status(400).json({ error: "Member ID is required" });
+
+  const sessions = loadJsonFile<any[]>(SESSIONS_FILE, defaultWorkoutSessions);
+  const todayStr = new Date().toISOString().split("T")[0];
+  const sessionKey = `session-${memberId}-${todayStr}`;
+
+  let session = sessions.find(s => s.id === sessionKey);
+  const plans = loadJsonFile<any[]>(WORKOUTS_FILE, []);
+  const matchedPlan = plans.find(p => p.memberId === memberId) || { id: "wp-autogen", title: "General Conditioning", exercises: [] };
+
+  if (!session) {
+    session = {
+      id: sessionKey,
+      memberId: memberId,
+      workoutPlanId: matchedPlan.id,
+      workoutDate: todayStr,
+      workoutName: matchedPlan.title,
+      scheduledTime: "18:00",
+      status: "scheduled",
+      isLateAttendance: false,
+      completedExercises: [],
+      lastOpenedAt: new Date().toISOString(),
+      totalExercisesCount: matchedPlan.exercises?.length || 0,
+      completedExercisesCount: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    sessions.push(session);
+  } else {
+    session.lastOpenedAt = new Date().toISOString();
+    session.totalExercisesCount = matchedPlan.exercises?.length || 0;
+    session.updatedAt = new Date().toISOString();
+  }
+
+  saveJsonFile(SESSIONS_FILE, sessions);
+  return res.json({ success: true, session });
+});
+
+app.post("/api/member/sessions/:id/exercise", (req, res) => {
+  const user = getSessionUser(req);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+  const { exerciseId, completed } = req.body;
+  if (exerciseId === undefined) return res.status(400).json({ error: "Exercise ID is required" });
+
+  const sessions = loadJsonFile<any[]>(SESSIONS_FILE, defaultWorkoutSessions);
+  const sIndex = sessions.findIndex(s => s.id === req.params.id);
+  if (sIndex === -1) return res.status(404).json({ error: "Session template not found" });
+
+  const session = sessions[sIndex];
+  if (user.role === "member" && session.memberId !== user.memberId) {
+    return res.status(403).json({ error: "403 Forbidden: Mismatched session owner." });
+  }
+
+  session.completedExercises = session.completedExercises || [];
+  if (completed) {
+    if (!session.completedExercises.includes(exerciseId)) {
+      session.completedExercises.push(exerciseId);
+    }
+  } else {
+    session.completedExercises = session.completedExercises.filter((id: string) => id !== exerciseId);
+  }
+
+  session.completedExercisesCount = session.completedExercises.length;
+  session.updatedAt = new Date().toISOString();
+
+  sessions[sIndex] = session;
+  saveJsonFile(SESSIONS_FILE, sessions);
+  return res.json({ success: true, session });
+});
+
+app.post("/api/member/sessions/:id/complete", (req, res) => {
+  const user = getSessionUser(req);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+  const sessions = loadJsonFile<any[]>(SESSIONS_FILE, defaultWorkoutSessions);
+  const sIndex = sessions.findIndex(s => s.id === req.params.id);
+  if (sIndex === -1) return res.status(404).json({ error: "Session template not found" });
+
+  const session = sessions[sIndex];
+  if (user.role === "member" && session.memberId !== user.memberId) {
+    return res.status(403).json({ error: "403 Forbidden: Mismatched session owner." });
+  }
+
+  session.status = "workout_completed";
+  session.completionResponse = "completed";
+  session.completedAt = new Date().toISOString();
+  session.updatedAt = new Date().toISOString();
+
+  sessions[sIndex] = session;
+  saveJsonFile(SESSIONS_FILE, sessions);
+  return res.json({ success: true, session });
+});
+
+// ==========================================
+// EQUIPMENT INVENTORY & WORKOUT OPTIMISATION
+// ==========================================
+
+// 1. Get entire Equipment Inventory
+app.get("/api/equipment", (req, res) => {
+  const list = loadJsonFile<any[]>(EQUIPMENT_FILE, []);
+  return res.json(list);
+});
+
+// 2. Add novel Equipment (With AI duplication protection)
+app.post("/api/equipment", (req, res) => {
+  const user = getSessionUser(req);
+  if (!user || user.role === "member") {
+    return res.status(403).json({ error: "Access denied. Action restricted to administrators." });
+  }
+
+  const body = req.body;
+  if (!body.canonical_name || !body.equipment_id) {
+    return res.status(400).json({ error: "Missing required fields (canonical_name, equipment_id)" });
+  }
+
+  const list = loadJsonFile<any[]>(EQUIPMENT_FILE, []);
+
+  // Strict Duplication Check (Protecting inventory from duplicates of identical machines - aliases check)
+  const isDuplicate = list.some(item => {
+    const isSameId = item.equipment_id.toLowerCase() === body.equipment_id.toLowerCase();
+    const isSameName = item.canonical_name.toLowerCase() === body.canonical_name.toLowerCase();
+    const matchesAlias = (item.aliases || []).some((alias: string) => 
+      alias.toLowerCase() === body.canonical_name.toLowerCase()
+    ) || (body.aliases || []).some((alias: string) => 
+      alias.toLowerCase() === item.canonical_name.toLowerCase()
+    );
+    return isSameId || isSameName || matchesAlias;
+  });
+
+  if (isDuplicate) {
+    return res.status(400).json({ 
+      error: `INVENTORY REJECTED: Equipment "${body.canonical_name}" or its alias already exists on the gym floor schema. Prevent duplicate entries representing the same hardware.` 
+    });
+  }
+
+  const newItem = {
+    equipment_id: body.equipment_id,
+    canonical_name: body.canonical_name,
+    aliases: body.aliases || [],
+    category: body.category || "selectorized_machine",
+    subcategory: body.subcategory || null,
+    quantity: Number(body.quantity) || 1,
+    workout_eligible: body.workout_eligible !== undefined ? body.workout_eligible : true,
+    supported_activities: body.supported_activities || [],
+    primary_muscle_groups: body.primary_muscle_groups || [],
+    movement_patterns: body.movement_patterns || [],
+    difficulty_levels: body.difficulty_levels || ["beginner", "intermediate", "advanced"],
+    status: body.status || "active",
+    gym_zone: body.gym_zone || null,
+    manufacturer: body.manufacturer || null,
+    model: body.model || null,
+    photo_url: body.photo_url || null,
+    qr_code_url: `/equipment/${body.equipment_id}`,
+    maintenance_required: false,
+    last_maintenance_date: null,
+    review_required: body.review_required || false,
+    notes: body.notes || null
+  };
+
+  list.push(newItem);
+  saveJsonFile(EQUIPMENT_FILE, list);
+
+  return res.json({ success: true, equipment: newItem });
+});
+
+// 3. Update active Equipment details
+app.put("/api/equipment/:id", (req, res) => {
+  const user = getSessionUser(req);
+  if (!user || user.role === "member") {
+    return res.status(403).json({ error: "Access denied." });
+  }
+
+  const list = loadJsonFile<any[]>(EQUIPMENT_FILE, []);
+  const index = list.findIndex(e => e.equipment_id === req.params.id);
+  if (index === -1) return res.status(404).json({ error: "Equipment not found" });
+
+  const body = req.body;
+  const original = list[index];
+
+  const updatedItem = {
+    ...original,
+    canonical_name: body.canonical_name || original.canonical_name,
+    aliases: body.aliases !== undefined ? body.aliases : original.aliases,
+    category: body.category || original.category,
+    subcategory: body.subcategory !== undefined ? body.subcategory : original.subcategory,
+    quantity: body.quantity !== undefined ? Number(body.quantity) : original.quantity,
+    workout_eligible: body.workout_eligible !== undefined ? body.workout_eligible : original.workout_eligible,
+    supported_activities: body.supported_activities || original.supported_activities,
+    primary_muscle_groups: body.primary_muscle_groups || original.primary_muscle_groups,
+    movement_patterns: body.movement_patterns || original.movement_patterns,
+    difficulty_levels: body.difficulty_levels || original.difficulty_levels,
+    status: body.status || original.status,
+    gym_zone: body.gym_zone !== undefined ? body.gym_zone : original.gym_zone,
+    manufacturer: body.manufacturer !== undefined ? body.manufacturer : original.manufacturer,
+    model: body.model !== undefined ? body.model : original.model,
+    photo_url: body.photo_url !== undefined ? body.photo_url : original.photo_url,
+    maintenance_required: body.maintenance_required !== undefined ? body.maintenance_required : original.maintenance_required,
+    last_maintenance_date: body.last_maintenance_date !== undefined ? body.last_maintenance_date : original.last_maintenance_date,
+    review_required: body.review_required !== undefined ? body.review_required : original.review_required,
+    notes: body.notes !== undefined ? body.notes : original.notes
+  };
+
+  list[index] = updatedItem;
+  saveJsonFile(EQUIPMENT_FILE, list);
+  return res.json({ success: true, equipment: updatedItem });
+});
+
+// 4. Delete active Equipment
+app.delete("/api/equipment/:id", (req, res) => {
+  const user = getSessionUser(req);
+  if (!user || user.role === "member") {
+    return res.status(403).json({ error: "Access denied." });
+  }
+
+  const list = loadJsonFile<any[]>(EQUIPMENT_FILE, []);
+  const filtered = list.filter(e => e.equipment_id !== req.params.id);
+  saveJsonFile(EQUIPMENT_FILE, filtered);
+  return res.json({ success: true });
+});
+
+// 5. Get current supporting free-weight resources inventory configurations
+app.get("/api/equipment/inventory", (req, res) => {
+  const inv = loadJsonFile<any>(INVENTORY_FILE, {
+    supporting_resources: { dumbbells_available: true, barbells_available: true, ez_curl_bar_available: true, weight_plates_available: true },
+    dumbbell_range_kg: { minimum: null, maximum: null },
+    weight_plate_sizes_kg: [],
+    barbell_count: null
+  });
+  return res.json(inv);
+});
+
+// 6. Save supporting free-weight resources configs
+app.post("/api/equipment/inventory", (req, res) => {
+  const user = getSessionUser(req);
+  if (!user || user.role === "member") {
+    return res.status(403).json({ error: "Access denied." });
+  }
+
+  saveJsonFile(INVENTORY_FILE, req.body);
+  return res.json({ success: true, inventory: req.body });
+});
+
+// 7. Get exercises mapping catalog
+app.get("/api/exercises", (req, res) => {
+  const catalog = loadJsonFile<any[]>(EXERCISES_FILE, []);
+  return res.json(catalog);
+});
+
+// 8. Add exercise configuration listing
+app.post("/api/exercises", (req, res) => {
+  const user = getSessionUser(req);
+  if (!user || user.role === "member") {
+    return res.status(403).json({ error: "Access denied." });
+  }
+
+  const body = req.body;
+  if (!body.name || !body.required_equipment) {
+    return res.status(400).json({ error: "Missing required fields (name, required_equipment)" });
+  }
+
+  const catalog = loadJsonFile<any[]>(EXERCISES_FILE, []);
+  const newEx = {
+    exercise_id: body.exercise_id || `ex_${Date.now()}`,
+    name: body.name,
+    required_equipment: body.required_equipment,
+    muscle_group: body.muscle_group || "general",
+    difficulty: body.difficulty || "beginner",
+    alternatives: body.alternatives || []
+  };
+
+  catalog.push(newEx);
+  saveJsonFile(EXERCISES_FILE, catalog);
+
+  // Update mapping file
+  const mappings = loadJsonFile<any[]>(MAPPING_FILE, []);
+  body.required_equipment.forEach((equipId: string) => {
+    const mNode = mappings.find(m => m.equipment_id === equipId);
+    if (mNode) {
+      if (!mNode.exercise_ids.includes(newEx.exercise_id)) {
+        mNode.exercise_ids.push(newEx.exercise_id);
+      }
+    } else {
+      mappings.push({ equipment_id: equipId, exercise_ids: [newEx.exercise_id] });
+    }
+  });
+  saveJsonFile(MAPPING_FILE, mappings);
+
+  return res.json({ success: true, exercise: newEx });
+});
+
+// 9. Get maintenance logs
+app.get("/api/equipment/maintenance", (req, res) => {
+  const logs = loadJsonFile<any[]>(MAINTENANCE_FILE, []);
+  return res.json(logs);
+});
+
+// 10. Post a maintenance log
+app.post("/api/equipment/maintenance", (req, res) => {
+  const user = getSessionUser(req);
+  if (!user || user.role === "member") {
+    return res.status(403).json({ error: "Access denied." });
+  }
+
+  const body = req.body;
+  const logs = loadJsonFile<any[]>(MAINTENANCE_FILE, []);
+
+  const newLog = {
+    id: `log-${Date.now()}`,
+    equipment_id: body.equipment_id,
+    type: body.type || "corrective",
+    technician: body.technician || "Staff Member",
+    cost: Number(body.cost) || 0.0,
+    date: body.date || new Date().toISOString().split("T")[0],
+    status: body.status || "completed",
+    notes: body.notes || ""
+  };
+
+  logs.unshift(newLog);
+  saveJsonFile(MAINTENANCE_FILE, logs);
+
+  // Update physical equipment status to reflect status change
+  if (body.equipment_id) {
+    const list = loadJsonFile<any[]>(EQUIPMENT_FILE, []);
+    const index = list.findIndex(e => e.equipment_id === body.equipment_id);
+    if (index !== -1) {
+      list[index].last_maintenance_date = newLog.date;
+      list[index].maintenance_required = false;
+      if (body.status === "completed") {
+        list[index].status = "active";
+      } else if (body.status === "scheduled") {
+        list[index].status = "under_maintenance";
+      }
+      saveJsonFile(EQUIPMENT_FILE, list);
+    }
+  }
+
+  return res.json({ success: true, log: newLog });
+});
+
+// 11. Get reported equipment problems
+app.get("/api/equipment/reports", (req, res) => {
+  const reports = loadJsonFile<any[]>(REPORTS_FILE, []);
+  return res.json(reports);
+});
+
+// 12. Post feedback ticket reporting a machine issue
+app.post("/api/equipment/reports", (req, res) => {
+  const user = getSessionUser(req);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+  const body = req.body;
+  if (!body.equipment_id || !body.issue_type) {
+    return res.status(400).json({ error: "Missing required report attributes." });
+  }
+
+  const reports = loadJsonFile<any[]>(REPORTS_FILE, []);
+
+  const newReport = {
+    id: `rep-${Date.now()}`,
+    equipment_id: body.equipment_id,
+    member_id: user.memberId || "STAFF",
+    member_name: user.name || "Anonymous",
+    issue_type: body.issue_type,
+    notes: body.notes || "",
+    status: "pending",
+    created_at: new Date().toISOString()
+  };
+
+  reports.unshift(newReport);
+  saveJsonFile(REPORTS_FILE, reports);
+
+  // Mark equipment as having review or maintenance required for fast warning display
+  const list = loadJsonFile<any[]>(EQUIPMENT_FILE, []);
+  const index = list.findIndex(e => e.equipment_id === body.equipment_id);
+  if (index !== -1) {
+    list[index].maintenance_required = true;
+    if (body.issue_type === "Machine unavailable" || body.issue_type === "Machine damaged" || body.issue_type === "Weight stack problem") {
+      list[index].status = "temporarily_unavailable";
+    }
+    saveJsonFile(EQUIPMENT_FILE, list);
+  }
+
+  return res.json({ success: true, report: newReport });
+});
+
+// 13. Update reported ticket status
+app.put("/api/equipment/reports/:id", (req, res) => {
+  const user = getSessionUser(req);
+  if (!user || user.role === "member") {
+    return res.status(403).json({ error: "Access denied." });
+  }
+
+  const reports = loadJsonFile<any[]>(REPORTS_FILE, []);
+  const index = reports.findIndex(r => r.id === req.params.id);
+  if (index === -1) return res.status(404).json({ error: "Feedback ticket not found." });
+
+  reports[index].status = req.body.status || "resolved";
+  saveJsonFile(REPORTS_FILE, reports);
+
+  return res.json({ success: true, report: reports[index] });
+});
 
 // Configure Vite integration
 async function startServer() {

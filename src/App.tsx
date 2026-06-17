@@ -5,6 +5,7 @@ import PublicPages from "./pages/PublicPages";
 import MemberPortal from "./pages/MemberPortal";
 import TvDisplay from "./pages/TvDisplay";
 import AdminDashboard from "./pages/AdminDashboard";
+import QrMachineInspect from "./components/QrMachineInspect";
 
 import { 
   Member, 
@@ -74,6 +75,7 @@ export default function App() {
 
   // Modal selector for testing emails/accounts in Google Login preview flows
   const [showGoogleLoginModal, setShowGoogleLoginModal] = useState(false);
+  const [scannedMachineId, setScannedMachineId] = useState<string | null>(null);
 
   // Auto-sync state machines to client localStorage
   useEffect(() => { saveState("kfc_view", currentView); }, [currentView]);
@@ -90,6 +92,61 @@ export default function App() {
   useEffect(() => { saveState("kfc_announcements", announcements); }, [announcements]);
   useEffect(() => { saveState("kfc_applications", applications); }, [applications]);
   useEffect(() => { saveState("kfc_audits", auditLogs); }, [auditLogs]);
+
+  // Synchronously restore the server HTTP-only session on boot
+  useEffect(() => {
+    fetch("/api/auth/session")
+      .then(res => {
+        if (res.ok) return res.json();
+        throw new Error("No active session");
+      })
+      .then(data => {
+        if (data.user) {
+          setCurrentUser(data.user);
+          if (data.user.role === "member") {
+            const matched = [...members, ...demoMembers].find(m => m.email === data.user.email);
+            const targetId = matched?.id || "KFC-101";
+            localStorage.setItem("temp_portal_m_id", targetId);
+          }
+        }
+      })
+      .catch(() => {
+        // Safe to ignore if no session cookie exists yet
+      });
+  }, []);
+
+  // Intercept QR Code scanned machine paths on load
+  useEffect(() => {
+    const path = window.location.pathname;
+    if (path.startsWith("/equipment/")) {
+      const parts = path.split("/");
+      const machineId = parts[parts.length - 1];
+      if (machineId) {
+        setScannedMachineId(machineId);
+        setCurrentView("qr-machine-page");
+      }
+    }
+  }, []);
+
+  // Process incoming secure WhatsApp deep links
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const viewParam = params.get("view");
+    if (viewParam === "member-workouts") {
+      // Clear the query parameters to keep the URL address bar clean and premium
+      window.history.replaceState({}, document.title, window.location.pathname);
+      
+      // Keep track of redirect intent
+      sessionStorage.setItem("lf_redirect_to_workouts", "true");
+      
+      if (currentUser && currentUser.role === "member") {
+        setCurrentView("member-portal");
+      } else {
+        // Push user to login screen first, after login successful it will redirect to workouts
+        setCurrentView("member-login");
+      }
+    }
+  }, [currentUser]);
 
   // Logging utility for administrator auditing list
   const logAction = (action: string, performedBy: string, details: string) => {
@@ -123,6 +180,11 @@ export default function App() {
         updatedAt: new Date().toISOString()
       };
       setCurrentUser(user);
+      fetch("/api/auth/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user })
+      }).catch(err => console.warn("Sa login session sync err:", err));
       logAction("Staff Authentication Login", user.name, "Super Admin unlocked dashboard entry");
       setCurrentView("admin");
     } else if (role === "Member1") {
@@ -132,12 +194,18 @@ export default function App() {
         email: "member1@kalyarfitness.com",
         name: firstMem.fullName,
         role: "member",
+        memberId: firstMem.id,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
       // Keep track of active portal target via localStorage or memory
       localStorage.setItem("temp_portal_m_id", firstMem.id);
       setCurrentUser(user);
+      fetch("/api/auth/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user })
+      }).catch(err => console.warn("M1 login session sync err:", err));
       logAction("Member Authentication Login", user.name, `Member checked digital ID ${firstMem.id}`);
       setCurrentView("member-portal");
     } else {
@@ -147,11 +215,17 @@ export default function App() {
         email: "member2@kalyarfitness.com",
         name: secondMem.fullName,
         role: "member",
+        memberId: secondMem.id,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
       localStorage.setItem("temp_portal_m_id", secondMem.id);
       setCurrentUser(user);
+      fetch("/api/auth/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user })
+      }).catch(err => console.warn("M2 login session sync err:", err));
       logAction("Member Authentication Login", user.name, `Member checked digital ID ${secondMem.id}`);
       setCurrentView("member-portal");
     }
@@ -163,6 +237,8 @@ export default function App() {
     }
     localStorage.removeItem("temp_portal_m_id");
     setCurrentUser(null);
+    fetch("/api/auth/logout", { method: "POST" })
+      .catch(err => console.warn("Logout session sync error:", err));
     setCurrentView("home");
   };
 
@@ -302,14 +378,25 @@ export default function App() {
     if (user.role === "member") {
       const matchEmail = user.email;
       const matched = [...members, ...demoMembers].find(m => m.email === matchEmail);
-      const targetId = matched?.id || "MEM-101";
+      const targetId = matched?.id || "KFC-101";
+      const finalUser = { ...user, memberId: targetId };
 
       localStorage.setItem("temp_portal_m_id", targetId);
-      setCurrentUser(user);
+      setCurrentUser(finalUser);
+      fetch("/api/auth/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user: finalUser })
+      }).catch(err => console.warn("Passkey login session sync err:", err));
       logAction("Biometric Passkey Authentication Login", user.name, `Member checked digital ID ${targetId}`);
       setCurrentView("member-portal");
     } else {
       setCurrentUser(user);
+      fetch("/api/auth/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user })
+      }).catch(err => console.warn("Staff Passkey login session sync err:", err));
       logAction("Staff Biometric Authentication Login", user.name, `${user.role} unlocked control dashboard via Passkey assertion`);
       setCurrentView("admin");
     }

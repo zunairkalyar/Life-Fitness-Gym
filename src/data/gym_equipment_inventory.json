@@ -1,0 +1,18 @@
+{
+  "supporting_resources": {
+    "dumbbells_available": true,
+    "barbells_available": true,
+    "ez_curl_bar_available": true,
+    "weight_plates_available": true,
+    "cable_attachments_available": true,
+    "exercise_mats_available": true,
+    "battle_rope_available": true,
+    "adjustable_benches_available": true
+  },
+  "dumbbell_range_kg": {
+    "minimum": 2.5,
+    "maximum": 50
+  },
+  "weight_plate_sizes_kg": [1.25, 2.5, 5, 10, 15, 20, 25],
+  "barbell_count": 8
+}

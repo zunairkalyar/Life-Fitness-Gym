@@ -1,0 +1,12 @@
+[
+  {
+    "id": "rep-201",
+    "equipment_id": "seated_row_back_machine",
+    "member_id": "MEM-003",
+    "member_name": "James Smith",
+    "issue_type": "Seat adjustment problem",
+    "notes": "The slide-clamp on the chest pad is sticking when adjusted down.",
+    "status": "pending",
+    "created_at": "2026-06-15T14:22:00Z"
+  }
+]

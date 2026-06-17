@@ -30,6 +30,7 @@ export interface UserProfile {
   email: string;
   name: string;
   role: UserRole;
+  memberId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -444,6 +445,42 @@ export interface MemberWorkoutSession {
   isLateAttendance: boolean;
   absenceRecordedAt?: string;
   messageFailureReason?: string;
+  createdAt: string;
+  updatedAt: string;
+  completedExercises?: string[]; // array of completed exercise IDs
+  lastOpenedAt?: string;
+  totalExercisesCount?: number;
+  completedExercisesCount?: number;
+}
+
+export interface MemberWorkoutExerciseDetail {
+  id: string;
+  name: string;
+  sets: number;
+  reps: string;
+  weight: string;
+  rest: string;
+  imageUrl?: string;
+  videoUrl?: string;
+  notes?: string;
+  coachInstructions?: string;
+}
+
+export interface MemberWorkoutPlan {
+  id: string;
+  memberId: string;
+  title: string;
+  startDate: string;
+  endDate: string;
+  editPermission: "locked" | "limited" | "full";
+  exercises: MemberWorkoutExerciseDetail[];
+  history: {
+    versionId: string;
+    updatedBy: string; // "coach" | "member"
+    updatedAt: string;
+    exercises: MemberWorkoutExerciseDetail[];
+    note?: string;
+  }[];
   createdAt: string;
   updatedAt: string;
 }
