@@ -73,6 +73,7 @@ export default function GainsCalculator({ onApplyTargets, currentCalories }: Gai
   }
 
   const [applied, setApplied] = useState(false);
+  const [copiedSheet, setCopiedSheet] = useState(false);
 
   const handleApply = () => {
     onApplyTargets(targetCalories, proteinGrams, carbsGrams, fatsGrams);
@@ -107,7 +108,8 @@ export default function GainsCalculator({ onApplyTargets, currentCalories }: Gai
       `Calculated live via Kalyar Fitness Member Portal. Keep tearing compound lines!`;
     
     navigator.clipboard.writeText(summary);
-    alert("📋 Personal Macro gains copied to clipboard! Share it with your Coach.");
+    setCopiedSheet(true);
+    setTimeout(() => setCopiedSheet(false), 3000);
   };
 
   return (
@@ -119,13 +121,18 @@ export default function GainsCalculator({ onApplyTargets, currentCalories }: Gai
           </span>
           <h3 className="text-white text-base font-black uppercase tracking-tight mt-0.5">Hydration & BMR Macro Planner</h3>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {copiedSheet && (
+            <span className="text-[10px] bg-emerald-500/10 text-emerald-400 font-extrabold uppercase py-1 px-2.5 rounded-lg border border-emerald-500/20 animate-pulse">
+              ✔ Copied Sheet to Clipboard!
+            </span>
+          )}
           <button
             onClick={handleCopyClipboard}
             className="bg-neutral-950 border border-neutral-800 text-neutral-400 hover:text-white px-3 py-1.5 rounded-xl text-[10px] uppercase font-black tracking-wider transition-all cursor-pointer flex items-center gap-1.5"
           >
             <Clipboard className="h-3.5 w-3.5 text-neutral-400" />
-            Copy Sheet
+            {copiedSheet ? "Copied!" : "Copy Sheet"}
           </button>
         </div>
       </div>

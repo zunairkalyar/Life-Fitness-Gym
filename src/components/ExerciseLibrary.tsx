@@ -18,7 +18,7 @@ import {
   Notebook
 } from "lucide-react";
 import { Member, SavedExercise, MemberWorkoutExercise } from "../types";
-import { db } from "../firebase";
+import { db, handleFirestoreError, OperationType } from "../firebase";
 import { 
   collection, 
   query, 
@@ -121,8 +121,19 @@ export default function ExerciseLibrary({ member }: ExerciseLibraryProps) {
         items.push({ id: docSnap.id, ...docSnap.data() } as SavedExercise);
       });
       setSavedList(items);
+      localStorage.setItem(`lf_saved_exercises_${member.id}`, JSON.stringify(items));
     } catch (err) {
-      console.error("Failed to load saved exercises:", err);
+      console.warn("Failed to load saved exercises from Firestore. Using local storage backup:", err);
+      const backup = localStorage.getItem(`lf_saved_exercises_${member.id}`);
+      if (backup) {
+        try {
+          setSavedList(JSON.parse(backup));
+        } catch (_) {
+          setSavedList([]);
+        }
+      } else {
+        setSavedList([]);
+      }
     }
   };
 
@@ -138,8 +149,21 @@ export default function ExerciseLibrary({ member }: ExerciseLibraryProps) {
       // Sort by order/name
       items.sort((a, b) => (a.order || 0) - (b.order || 0));
       setSavedRoutines(items);
+      localStorage.setItem(`lf_workout_exercises_${member.id}`, JSON.stringify(items));
     } catch (err) {
-      console.error("Failed to fetch custom routines:", err);
+      console.warn("Failed to fetch custom routines from Firestore. Using local storage backup:", err);
+      const backup = localStorage.getItem(`lf_workout_exercises_${member.id}`);
+      if (backup) {
+        try {
+          const items: MemberWorkoutExercise[] = JSON.parse(backup);
+          items.sort((a, b) => (a.order || 0) - (b.order || 0));
+          setSavedRoutines(items);
+        } catch (_) {
+          setSavedRoutines([]);
+        }
+      } else {
+        setSavedRoutines([]);
+      }
     }
   };
 
@@ -171,54 +195,72 @@ export default function ExerciseLibrary({ member }: ExerciseLibraryProps) {
 
   // Save/Bookmark exercise
   const handleSaveExercise = async (ex: Exercise) => {
-    try {
-      const docId = `${member.id}_${ex.id}`;
-      const data: SavedExercise = {
-        id: docId,
-        memberId: member.id,
-        provider: "musclewiki",
-        externalExerciseId: ex.id,
-        exerciseName: ex.name,
-        primaryMuscles: ex.primaryMuscles,
-        category: ex.category,
-        difficulty: ex.difficulty,
-        savedAt: new Date().toISOString(),
-        personalNote: ""
-      };
+    const docId = `${member.id}_${ex.id}`;
+    const data: SavedExercise = {
+      id: docId,
+      memberId: member.id,
+      provider: "musclewiki",
+      externalExerciseId: ex.id,
+      exerciseName: ex.name,
+      primaryMuscles: ex.primaryMuscles,
+      category: ex.category,
+      difficulty: ex.difficulty,
+      savedAt: new Date().toISOString(),
+      personalNote: ""
+    };
 
+    // Immediate optimistic local update
+    const updatedList = [data, ...savedList.filter(s => s.id !== docId)];
+    setSavedList(updatedList);
+    localStorage.setItem(`lf_saved_exercises_${member.id}`, JSON.stringify(updatedList));
+
+    try {
       await setDoc(doc(db, "savedExercises", docId), data);
       showToast("Exercise successfully saved to bookmarks!");
       fetchSavedFromFirestore();
     } catch (err) {
-      console.error("Save failed:", err);
-      showToast("Could not save exercise.");
+      console.warn("Firestore save deferred. Saved locally:", err);
+      showToast("Saved to bookmarks locally.");
     }
   };
 
   // Remove saved exercise
   const handleUnsaveExercise = async (savedId: string) => {
+    // Immediate optimistic local update
+    const updatedList = savedList.filter(s => s.id !== savedId);
+    setSavedList(updatedList);
+    localStorage.setItem(`lf_saved_exercises_${member.id}`, JSON.stringify(updatedList));
+
     try {
       await deleteDoc(doc(db, "savedExercises", savedId));
       showToast("Removed from bookmarks.");
       fetchSavedFromFirestore();
     } catch (err) {
-      console.error("Delete failed:", err);
+      console.warn("Firestore delete deferred. Removed locally:", err);
+      showToast("Removed bookmark locally.");
     }
   };
 
   // Add personal note
   const handleUpdateNote = async (savedId: string) => {
-    try {
-      const match = savedList.find(s => s.id === savedId);
-      if (!match) return;
+    const match = savedList.find(s => s.id === savedId);
+    if (!match) return;
 
-      const updated = { ...match, personalNote: tempNoteText };
+    const updated = { ...match, personalNote: tempNoteText };
+    // Immediate optimistic local update
+    const updatedList = savedList.map(s => s.id === savedId ? updated : s);
+    setSavedList(updatedList);
+    localStorage.setItem(`lf_saved_exercises_${member.id}`, JSON.stringify(updatedList));
+
+    try {
       await setDoc(doc(db, "savedExercises", savedId), updated);
       setActiveNoteEditId(null);
       showToast("Added note annotation successfully.");
       fetchSavedFromFirestore();
     } catch (err) {
-      console.error("Failed to append note:", err);
+      console.warn("Firestore note update deferred. Updated locally:", err);
+      setActiveNoteEditId(null);
+      showToast("Updated note annotation locally.");
     }
   };
 
@@ -257,23 +299,33 @@ export default function ExerciseLibrary({ member }: ExerciseLibraryProps) {
       return;
     }
     setSaveLoading(true);
+
+    const preparedItems: MemberWorkoutExercise[] = workoutRoutine.map(item => {
+      const routineDocId = `routine_${item.id}`;
+      return {
+        ...item,
+        id: routineDocId,
+        savedAt: new Date().toISOString()
+      } as MemberWorkoutExercise;
+    });
+
+    // Immediate optimistic local update
+    const updatedRoutines = [...preparedItems, ...savedRoutines];
+    setSavedRoutines(updatedRoutines);
+    localStorage.setItem(`lf_workout_exercises_${member.id}`, JSON.stringify(updatedRoutines));
+    setWorkoutRoutine([]);
+    setLibraryTab("routine");
+
     try {
-      for (const item of workoutRoutine) {
+      for (const item of preparedItems) {
         if (!item.id || !item.exerciseName) continue;
-        const routineDocId = `routine_${item.id}`;
-        await setDoc(doc(db, "memberWorkoutExercises", routineDocId), {
-          ...item,
-          id: routineDocId,
-          savedAt: new Date().toISOString()
-        });
+        await setDoc(doc(db, "memberWorkoutExercises", item.id), item);
       }
       showToast("Gym routine successfully built and synchronized!");
-      setWorkoutRoutine([]);
       fetchUserSavedRoutines();
-      setLibraryTab("routine");
     } catch (err) {
-      console.error("Failed compiling training session:", err);
-      showToast("Failed saving routine.");
+      console.warn("Firestore routine save deferred. Saved locally:", err);
+      showToast("Gym routine successfully built offline!");
     } finally {
       setSaveLoading(false);
     }
@@ -281,12 +333,18 @@ export default function ExerciseLibrary({ member }: ExerciseLibraryProps) {
 
   // Remove routine block
   const handleRemoveRoutineItem = async (routineId: string) => {
+    // Immediate optimistic local update
+    const updatedRoutines = savedRoutines.filter(r => r.id !== routineId);
+    setSavedRoutines(updatedRoutines);
+    localStorage.setItem(`lf_workout_exercises_${member.id}`, JSON.stringify(updatedRoutines));
+
     try {
       await deleteDoc(doc(db, "memberWorkoutExercises", routineId));
       showToast("Exercise item removed.");
       fetchUserSavedRoutines();
     } catch (err) {
-      console.error(err);
+      console.warn("Firestore routine remove deferred. Removed locally:", err);
+      showToast("Exercise item removed locally.");
     }
   };
 
@@ -484,9 +542,9 @@ export default function ExerciseLibrary({ member }: ExerciseLibraryProps) {
 
                         {/* Badges specifications list */}
                         <div className="flex flex-wrap gap-1.5 text-[10px] uppercase font-bold text-neutral-400">
-                          <span className="bg-neutral-900 px-2.5 py-1 rounded">Primary: <span className="text-neutral-200">{ex.primaryMuscles.join(", ")}</span></span>
+                          <span className="bg-neutral-900 px-2.5 py-1 rounded">Primary: <span className="text-neutral-200">{(ex.primaryMuscles || []).join(", ")}</span></span>
                           {ex.secondaryMuscles && ex.secondaryMuscles.length > 0 && (
-                            <span className="bg-neutral-900 px-2.5 py-1 rounded">Sec: <span className="text-neutral-300">{ex.secondaryMuscles.join(", ")}</span></span>
+                            <span className="bg-neutral-900 px-2.5 py-1 rounded">Sec: <span className="text-neutral-300">{(ex.secondaryMuscles || []).join(", ")}</span></span>
                           )}
                           <span className="bg-neutral-900 px-2.5 py-1 rounded">Level: <span className="text-red-400">{ex.difficulty}</span></span>
                         </div>
@@ -499,7 +557,7 @@ export default function ExerciseLibrary({ member }: ExerciseLibraryProps) {
                           <div className="space-y-2">
                             <span className="text-[10px] text-neutral-500 uppercase font-black tracking-widest block">Execution Steps:</span>
                             <ol className="list-decimal list-inside space-y-1.5 text-neutral-300 pl-1 font-medium">
-                              {ex.instructions.map((step, idx) => (
+                              {(ex.instructions || []).map((step, idx) => (
                                 <li key={idx}>{step}</li>
                               ))}
                             </ol>
@@ -573,7 +631,7 @@ export default function ExerciseLibrary({ member }: ExerciseLibraryProps) {
                         <span className="text-[10px] text-neutral-500 font-bold uppercase">{item.difficulty}</span>
                       </div>
                       <h3 className="text-white font-extrabold text-sm uppercase mt-1.5 leading-snug">{item.exerciseName}</h3>
-                      <p className="text-[9px] text-neutral-500 mt-0.5">Target: {item.primaryMuscles.join(", ")}</p>
+                      <p className="text-[9px] text-neutral-500 mt-0.5">Target: {(item.primaryMuscles || []).join(", ")}</p>
                     </div>
 
                     <div className="flex gap-1">

@@ -151,6 +151,7 @@ export default function AdminDashboard({
   const [inactivityActiveMember, setInactivityActiveMember] = useState<string | null>(null);
   const [inactivityGeneratedMsg, setInactivityGeneratedMsg] = useState("");
   const [isInactivityGenerating, setIsInactivityGenerating] = useState(false);
+  const [isCopiedMsg, setIsCopiedMsg] = useState(false);
 
   // New Exercise Add
   const [showAddExForm, setShowAddExForm] = useState(false);
@@ -735,12 +736,13 @@ export default function AdminDashboard({
                           window.open(waUrl, "_blank", "referrer");
                         } else {
                           navigator.clipboard.writeText(inactivityGeneratedMsg);
-                          alert("📋 Copied to Clipboard!");
+                          setIsCopiedMsg(true);
+                          setTimeout(() => setIsCopiedMsg(false), 2500);
                         }
                       }}
                       className="text-red-500 hover:text-white transition-colors cursor-pointer bg-transparent border-none font-bold"
                     >
-                      Instant Forward
+                      {isCopiedMsg ? "Copied!" : "Instant Forward"}
                     </button>
                   </div>
 
@@ -752,11 +754,12 @@ export default function AdminDashboard({
                     <button
                       onClick={() => {
                         navigator.clipboard.writeText(inactivityGeneratedMsg);
-                        alert("📋 Copy successful!");
+                        setIsCopiedMsg(true);
+                        setTimeout(() => setIsCopiedMsg(false), 2500);
                       }}
                       className="flex-1 py-2 bg-neutral-900 hover:bg-neutral-850 border border-neutral-800 hover:border-neutral-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer"
                     >
-                      Copy message text
+                      {isCopiedMsg ? "✓ Copy Successful!" : "Copy message text"}
                     </button>
                   </div>
                 </div>

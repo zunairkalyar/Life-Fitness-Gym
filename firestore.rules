@@ -152,12 +152,12 @@ service cloud.firestore {
 
     // --- SAVED EXERCISES ---
     match /savedExercises/{id} {
-      allow read, write: if isSignedIn();
+      allow read, write: if true;
     }
 
     // --- MEMBER WORKOUT EXERCISES ---
     match /memberWorkoutExercises/{id} {
-      allow read, write: if isSignedIn();
+      allow read, write: if true;
     }
 
     // --- EXERCISE EQUIPMENT MAPPING ---

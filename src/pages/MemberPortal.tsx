@@ -95,9 +95,19 @@ export default function MemberPortal({
   onUpdateMember
 }: MemberPortalProps) {
   const [activeSection, setActiveSection] = useState<"dashboard" | "ai-coach" | "exercises" | "diet" | "community" | "soundboard" | "equipment" | "traffic" | "workouts">("dashboard");
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
+
+  const showToast = (message: string, type: "success" | "error" | "info" = "success") => {
+    setToast({ message, type });
+    // Keep visible for enough time to read
+    const timer = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(timer);
+  };
+
   const [showProfileEditor, setShowProfileEditor] = useState(false);
   const [waLogs, setWaLogs] = useState<any[]>([]);
   const [waSettings, setWaSettings] = useState<any | null>(null);
+  const [performanceChartBasis, setPerformanceChartBasis] = useState<"weekly" | "monthly">("weekly");
 
   // Auto-redirect to Workouts tab if flagged by WhatsApp secure link parser
   useEffect(() => {
@@ -167,7 +177,7 @@ export default function MemberPortal({
 
   const handleRegisterPasskey = async () => {
     if (!passkeyName.trim()) {
-      alert("Please specify a name or label for this passkey (e.g. My TouchID Laptop).");
+      showToast("Please specify a label for this passkey.", "error");
       return;
     }
     setRegisteringPasskey(true);
@@ -243,9 +253,6 @@ export default function MemberPortal({
   };
 
   const handleDeletePasskey = async (keyId: string) => {
-    if (!confirm("Are you sure you want to revoke this biometric passkey? You will no longer be able to use this device to sign-in.")) {
-      return;
-    }
     try {
       const res = await fetch("/api/passkeys/delete", {
         method: "POST",
@@ -254,11 +261,13 @@ export default function MemberPortal({
       });
       if (res.ok) {
         setPasskeys(prev => prev.filter(k => k.id !== keyId));
+        showToast("Biometric passkey revoked successfully.");
       } else {
-        alert("Failed to delete key.");
+        showToast("Failed to delete physical key.", "error");
       }
     } catch (err) {
       console.error("Delete failed:", err);
+      showToast("Connection issue, please try again.", "error");
     }
   };
 
@@ -445,6 +454,111 @@ export default function MemberPortal({
     ];
     return defaultAttTrend;
   }, [attendance]);
+
+  // Combined Performance & Attendance Tracking Data over the last 3 months
+  const performance3MonthsData = useMemo(() => {
+    const today = new Date();
+    
+    if (performanceChartBasis === "weekly") {
+      const weeksList = [];
+      for (let i = 11; i >= 0; i--) {
+        const startOfWeek = new Date();
+        startOfWeek.setDate(today.getDate() - (i * 7) - today.getDay());
+        startOfWeek.setHours(0, 0, 0, 0);
+
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 6);
+        endOfWeek.setHours(23, 59, 59, 999);
+
+        const monthName = startOfWeek.toLocaleDateString(undefined, { month: "short" });
+        const dayOfMonth = startOfWeek.getDate();
+        
+        weeksList.push({
+          start: startOfWeek,
+          end: endOfWeek,
+          period: `${monthName} ${dayOfMonth}`,
+          attendanceCount: 0,
+          attemptsCount: 0
+        });
+      }
+
+      attendance.forEach(rec => {
+        if (!rec.date) return;
+        const recDate = new Date(`${rec.date}T12:00:00`);
+        weeksList.forEach(w => {
+          if (recDate >= w.start && recDate <= w.end) {
+            if (rec.status === "Present" || rec.status === "Late") {
+              w.attendanceCount++;
+            }
+          }
+        });
+      });
+
+      attempts.forEach(att => {
+        if (!att.createdAt) return;
+        const attDate = new Date(att.createdAt);
+        weeksList.forEach(w => {
+          if (attDate >= w.start && attDate <= w.end) {
+            if (att.status === "Approved" || att.status === "Pending") {
+              w.attemptsCount++;
+            }
+          }
+        });
+      });
+
+      return weeksList.map(w => ({
+        period: w.period,
+        "Attendance Frequency": w.attendanceCount,
+        "Exercise Attempts": w.attemptsCount
+      }));
+    } else {
+      const monthsList = [];
+      for (let i = 2; i >= 0; i--) {
+        const targetMonth = new Date(today.getFullYear(), today.getMonth() - i, 1);
+        monthsList.push({
+          year: targetMonth.getFullYear(),
+          monthIndex: targetMonth.getMonth(),
+          period: targetMonth.toLocaleDateString(undefined, { month: "long" }),
+          attendanceCount: 0,
+          attemptsCount: 0
+        });
+      }
+
+      attendance.forEach(rec => {
+        if (!rec.date) return;
+        const recDate = new Date(`${rec.date}T12:00:00`);
+        const rMonth = recDate.getMonth();
+        const rYear = recDate.getFullYear();
+        monthsList.forEach(m => {
+          if (m.monthIndex === rMonth && m.year === rYear) {
+            if (rec.status === "Present" || rec.status === "Late") {
+              m.attendanceCount++;
+            }
+          }
+        });
+      });
+
+      attempts.forEach(att => {
+        if (!att.createdAt) return;
+        const attDate = new Date(att.createdAt);
+        const rMonth = attDate.getMonth();
+        const rYear = attDate.getFullYear();
+        monthsList.forEach(m => {
+          if (m.monthIndex === rMonth && m.year === rYear) {
+            if (att.status === "Approved" || att.status === "Pending") {
+              m.attemptsCount++;
+            }
+          }
+        });
+      });
+
+      return monthsList.map(m => ({
+        period: m.period,
+        "Attendance Frequency": m.attendanceCount,
+        "Exercise Attempts": m.attemptsCount
+      }));
+    }
+  }, [attendance, attempts, performanceChartBasis]);
 
   const todayCaloriesConsumed = useMemo(() => {
     return dietLogs.reduce((sum, item) => sum + (item.calories * item.quantity), 0);
@@ -738,7 +852,7 @@ export default function MemberPortal({
     setCreatorPreviewAnimation(true);
     setTimeout(() => {
       setCreatorPreviewAnimation(false);
-      alert("✅ Awesome! Your Branded Poster has been synchronized with the Social Creator Pipeline. Share it to Instagram or Facebook! You gained +20 Lounge XP points.");
+      showToast("Sync Successful! Branded Poster online. Share to Socials! +20 XP.");
       setLoyaltyPoints(prev => prev + 20);
     }, 1500);
   };
@@ -792,7 +906,7 @@ export default function MemberPortal({
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
     
-    alert("📥 Download Started! Enjoy your premium branded Life Fitness SVGPoster. Drag and drop it into Instagram or crop for Reels!");
+    showToast("Download Begun! Branded SVG Poster saved. Check your downloads!");
   };
 
   // Live Transformation Timeline State
@@ -900,7 +1014,7 @@ export default function MemberPortal({
     setNewLiftWeight("");
     setNewLiftReps("");
     setNewLiftRpe("9");
-    alert("💪 Set Logged! +25 XP rewards gained and progress update posted to direct feed!");
+    showToast("Set Logged! +25 Loyalty XP points gained.");
   };
 
   const handleDeleteDailyLift = (id: string) => {
@@ -946,7 +1060,7 @@ export default function MemberPortal({
         ...prev,
         [slotId]: Math.max(0, prev[slotId] - 1)
       }));
-      alert("⚠️ Your gym slot reservation has been cancelled. Your spot is open for other members.");
+      showToast("Booking cancelled! Spot is now available.");
     } else {
       // Book new slot
       if (bookedSlot) {
@@ -963,7 +1077,7 @@ export default function MemberPortal({
         [slotId]: prev[slotId] + 1
       }));
       setLoyaltyPoints(p => p + 15); // reward points for booking in advance
-      alert(`🎉 Attendance Slot Confirmed! You booked "${GYM_SLOTS.find(s => s.id === slotId)?.name}". Proceed with your digital check-in QR! +15 XP rewarded.`);
+      showToast(`Slot Booked: ${GYM_SLOTS.find(s => s.id === slotId)?.name}! +15 XP.`);
     }
   };
 
@@ -1015,7 +1129,7 @@ export default function MemberPortal({
       comments: []
     };
     setCommunityFeed(prev => [workoutPost, ...prev]);
-    alert("🎉 Workout Logged and Approved! You completed Coach's assignments, earned +55 Lounge XP, and matching progress status is live in the community locker feed!");
+    showToast("Workout Registered successfully! Earned +55 Lounge XP.");
   };
 
   // Referrals list & state
@@ -1078,17 +1192,14 @@ export default function MemberPortal({
 
     setReferralsList(prev => [newRef, ...prev]);
     setNewReferralName("");
-    alert(`🎟️ VIP Guest Pass generated for "${newRef.friendName}" successfully! Show their coupon card down below.`);
+    showToast(`VIP Guest Pass issued for ${newRef.friendName}!`);
   };
 
   const handleRedeemReward = (reward: typeof REDEEMABLE_REWARDS[0]) => {
     if (loyaltyPoints < reward.cost) {
-      alert(`❌ Insufficient Lounge XP! You have ${loyaltyPoints} XP. This premium item requires ${reward.cost} XP. Keep hitting the gym streaks to earn!`);
+      showToast(`Need ${reward.cost} XP. Clear more streaks!`, "error");
       return;
     }
-
-    const proceed = window.confirm(`Confirm spend of ${reward.cost} XP to redeem "${reward.name}"? This action cannot be undone.`);
-    if (!proceed) return;
 
     setLoyaltyPoints(prev => prev - reward.cost);
     const newClaim = {
@@ -1100,7 +1211,7 @@ export default function MemberPortal({
     };
 
     setRewardRedemptions(prev => [newClaim, ...prev]);
-    alert(`🎁 Redemption slip "${newClaim.id}" issued! Present this ID at the Front desk desk lobby. points have been safely debited.`);
+    showToast(`Redemption Complete: Slip ${newClaim.id} Generated successfully.`);
   };
 
   // AI Content Assistant script metrics
@@ -1307,6 +1418,14 @@ export default function MemberPortal({
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
+      
+      {/* FLOATING SYSTEM TOAST PANEL */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 animate-fade-in flex items-center gap-3 bg-neutral-900/95 border border-yellow-500/40 text-white rounded-2xl p-4 shadow-2xl backdrop-blur-md max-w-sm">
+          <div className="h-2 w-2 rounded-full bg-yellow-500 animate-pulse" />
+          <p className="text-xs font-extrabold uppercase tracking-wider text-yellow-500">{toast.message}</p>
+        </div>
+      )}
       
       {/* PROFILE EDITOR MODAL WINDOW OVERLAY */}
       {showProfileEditor && (
@@ -2076,6 +2195,97 @@ export default function MemberPortal({
               <p className="text-[10px] text-neutral-500 leading-normal italic text-center text-semibold pt-1">
                 Ensure you lift under direct trainer spotting. Only Approved score settings appear live on gym TVs.
               </p>
+            </div>
+
+            {/* 3-MONTH ATTENDANCE & EXERCISE ATTEMPTS PERFORMANCE CHART */}
+            <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-neutral-800 pb-4">
+                <div className="space-y-1">
+                  <span className="text-[9px] text-red-500 font-extrabold uppercase tracking-widest block font-mono">Quarterly Analytics</span>
+                  <h3 className="text-white font-black uppercase text-sm tracking-widest mt-0.5">
+                    Engagement & Performance History
+                  </h3>
+                  <p className="text-[10px] text-neutral-400 font-medium">
+                    Attendance frequency and challenge attempts over the last 3 months
+                  </p>
+                </div>
+                
+                {/* Segmented Controller Button Toggle */}
+                <div className="flex bg-neutral-950 p-1 rounded-xl border border-neutral-850 self-start sm:self-center">
+                  <button
+                    type="button"
+                    onClick={() => setPerformanceChartBasis("weekly")}
+                    className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                      performanceChartBasis === "weekly"
+                        ? "bg-red-600 text-black shadow-md font-bold"
+                        : "text-neutral-400 hover:text-white"
+                    }`}
+                  >
+                    12 Weeks
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPerformanceChartBasis("monthly")}
+                    className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                      performanceChartBasis === "monthly"
+                        ? "bg-red-600 text-black shadow-md font-bold"
+                        : "text-neutral-400 hover:text-white"
+                    }`}
+                  >
+                    3 Months
+                  </button>
+                </div>
+              </div>
+
+              {/* Stats Highlights Summary */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-neutral-950 p-3 rounded-2xl border border-neutral-850/50 text-center space-y-1.5">
+                  <span className="text-[8px] text-neutral-400 uppercase tracking-wider block font-bold leading-none">Total Check-Ins</span>
+                  <span className="text-white text-lg font-black font-mono block leading-none">
+                    {attendance.filter(r => r.status === "Present" || r.status === "Late").length}
+                  </span>
+                  <span className="text-[8px] text-neutral-600 block font-semibold font-sans">Last 90 Days</span>
+                </div>
+                <div className="bg-neutral-950 p-3 rounded-2xl border border-neutral-850/50 text-center space-y-1.5">
+                  <span className="text-[8px] text-neutral-400 uppercase tracking-wider block font-bold leading-none">Challenges Logged</span>
+                  <span className="text-amber-500 text-lg font-black font-mono block leading-none">
+                    {attempts.filter(a => a.status === "Approved" || a.status === "Pending").length}
+                  </span>
+                  <span className="text-[8px] text-neutral-600 block font-semibold font-sans">Records Logged</span>
+                </div>
+                <div className="bg-neutral-950 p-3 rounded-2xl border border-neutral-850/50 text-center space-y-1.5">
+                  <span className="text-[8px] text-neutral-400 uppercase tracking-wider block font-bold leading-none">Consistency Ratio</span>
+                  <span className="text-red-500 text-lg font-black font-mono block leading-none">
+                    {Math.round((attendance.filter(r => r.status === "Present" || r.status === "Late").length / Math.max(1, attendance.length)) * 100)}%
+                  </span>
+                  <span className="text-[8px] text-neutral-600 block font-semibold font-sans">Present/Total Logs</span>
+                </div>
+              </div>
+
+              {/* Chart container */}
+              <div className="h-64 w-full text-[10px] font-mono select-none">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={performance3MonthsData} margin={{ top: 15, right: 10, left: -25, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#262626" vertical={false} />
+                    <XAxis dataKey="period" stroke="#6b7280" tickLine={false} />
+                    <YAxis stroke="#6b7280" allowDecimals={false} tickLine={false} domain={[0, "auto"]} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "#171717", borderColor: "#262626", borderRadius: "12px", color: "#fff" }}
+                      itemStyle={{ color: "#fff" }}
+                      labelStyle={{ color: "#dc2626", fontWeight: "bold" }}
+                    />
+                    <Legend 
+                      verticalAlign="top" 
+                      height={36} 
+                      iconType="circle"
+                      iconSize={8}
+                      wrapperStyle={{ fontSize: "10px", textTransform: "uppercase", fontWeight: "bold", letterSpacing: "0.5px" }} 
+                    />
+                    <Bar dataKey="Attendance Frequency" fill="#dc2626" radius={[4, 4, 0, 0]} barSize={performanceChartBasis === "weekly" ? 8 : 24} />
+                    <Bar dataKey="Exercise Attempts" fill="#fbbf24" radius={[4, 4, 0, 0]} barSize={performanceChartBasis === "weekly" ? 8 : 24} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
 
             {/* PHYSICAL PROGRESS & BIOMETRICS ANALYTICS PANEL */}
@@ -3028,7 +3238,7 @@ export default function MemberPortal({
                         <button
                           onClick={() => {
                             navigator.clipboard.writeText(generatedScript);
-                            alert("📋 Copy successful!");
+                            showToast("AI Script copied to Clipboard!");
                           }}
                           className="hover:text-amber-500 transition-colors cursor-pointer text-white bg-transparent border-none"
                         >
@@ -3115,14 +3325,16 @@ export default function MemberPortal({
                               </div>
                               <button 
                                 onClick={() => {
-                                  alert(`🎟️ VIP COUPON GUEST PASS: \n` +
+                                  const ticket = `🎟️ VIP COUPON GUEST PASS\n` +
                                     `━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
                                     `Life Fitness Gym Mandi Bahauddin\n` +
                                     `Guest Member: ${ref.friendName}\n` +
                                     `PASS ID CODE: ${ref.id}\n` +
                                     `Rules: 1-Day All Access Floor Pass + Free Trainer consultation session!\n` +
                                     `━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-                                    `Send this barcode details to them via Whatsapp!`);
+                                    `life-fitness-pk.applet`;
+                                  navigator.clipboard.writeText(ticket);
+                                  showToast(`Copied Guest Ticket for ${ref.friendName}! Share via WhatsApp.`);
                                 }}
                                 className="bg-neutral-950 text-[8px] font-black py-1 px-2.5 rounded hover:text-white border border-neutral-800 cursor-pointer"
                               >

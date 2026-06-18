@@ -206,6 +206,7 @@ export default function PublicPages({
   const [lunchSwapSelected, setLunchSwapSelected] = useState(true);
   const [snackSwapSelected, setSnackSwapSelected] = useState(true);
   const [dinnerSwapSelected, setDinnerSwapSelected] = useState(true);
+  const [dietCopied, setDietCopied] = useState(false);
 
   // BMI & Goal Advisor State
   const [showBmiAdvisor, setShowBmiAdvisor] = useState(false);
@@ -943,9 +944,15 @@ export default function PublicPages({
                           </div>
 
                           {/* ACTION BUTTON TO COPY COMPACT DIET DETAILS TO CLIPBOARD */}
-                          <button
-                            onClick={() => {
-                              const dietSum = `Assalam-o-Alaikum, here is my Life Fitness Pakistani Diet & Metric Statement!
+                          <div className="space-y-2">
+                            {dietCopied && (
+                              <div className="p-3 bg-emerald-500/15 border border-emerald-500/25 rounded-xl text-center text-emerald-400 font-extrabold text-[10px] uppercase tracking-wider animate-pulse">
+                                ✅ Assalam-o-Alaikum! Your personalized Pakistani diet plan has been copied to your Clipboard!
+                              </div>
+                            )}
+                            <button
+                              onClick={() => {
+                                const dietSum = `Assalam-o-Alaikum, here is my Life Fitness Pakistani Diet & Metric Statement!
 - Weight: ${w}kg | Height: ${h}cm | Goal: ${localGoal === "bulk" ? "Muscle Build" : localGoal === "cut" ? "Athletic Cut" : "Conditioning Maintenance"}
 - Target Energy Target: ${targetCal} kcal
 - Chosen Intake metrics: ${currentCalories} kcal, Protein: ${currentProtein}g, Fats: ${currentFat}g, Carbs: ${currentCarbs}g.
@@ -955,13 +962,15 @@ export default function PublicPages({
   * Snack: ${snackSwapSelected ? "Bhuna Chana Chickpeas" : "Deep-fried Samosa"}
   * Dinner: ${dinnerSwapSelected ? "No-skin Grilled Tikka Piece" : "Oily Korma Gravy"}
 Generated via Life Fitness Mandi Bahauddin applet tool. Strength & Progressive Power!`;
-                              navigator.clipboard.writeText(dietSum);
-                              alert("Assalam-o-Alaikum! Your personalized Pakistani fitness diet & metric plan has been successfully written to your Clipboard.");
-                            }}
-                            className="w-full bg-neutral-950 hover:bg-neutral-900 border border-neutral-800 text-[11px] font-black uppercase text-center p-3.5 rounded-xl transition-all font-mono text-neutral-400 hover:text-white tracking-widest block hover:border-red-500 cursor-pointer"
-                          >
-                            📋 Copy Personal Pakistani Diet Summary to Clipboard
-                          </button>
+                                navigator.clipboard.writeText(dietSum);
+                                setDietCopied(true);
+                                setTimeout(() => setDietCopied(false), 3500);
+                              }}
+                              className="w-full bg-neutral-950 hover:bg-neutral-900 border border-neutral-800 text-[11px] font-black uppercase text-center p-3.5 rounded-xl transition-all font-mono text-neutral-400 hover:text-white tracking-widest block hover:border-red-500 cursor-pointer"
+                            >
+                              {dietCopied ? "✓ Copy Successful!" : "📋 Copy Personal Pakistani Diet Summary to Clipboard"}
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );

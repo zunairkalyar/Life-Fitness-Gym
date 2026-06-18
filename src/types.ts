@@ -516,4 +516,74 @@ export interface MemberPasskey {
   createdAt: string;
 }
 
+export type ExerciseStatus = "Draft" | "Published" | "Needs Review" | "Missing Media" | "Import Failed" | "Inactive";
+
+export interface LocalExercise {
+  exercise_id: string; // Internal ID
+  name: string;
+  slug?: string;
+  provider: "musclewiki" | "manual" | "other";
+  external_id?: string; // original MuscleWiki ID
+  status: ExerciseStatus;
+  last_synced_at?: string;
+  primaryMuscles: string[];
+  secondaryMuscles?: string[];
+  muscle_group?: string; // body part
+  category: string; // equipment mode
+  required_equipment?: string[]; // IDs from equipment.json
+  difficulty: "beginner" | "intermediate" | "advanced";
+  force?: string;
+  mechanic?: string;
+  instructions: string[];
+  form_guide?: string;
+  breathing_guide?: string;
+  common_mistakes?: string;
+  safety_precautions?: string;
+  beginner_guidance?: string;
+  sets_reps?: string;
+  video_branded?: string;
+  video_unbranded?: string;
+  images?: string[];
+  video_url_male?: string;
+  video_url_female?: string;
+  muscle_map_front?: string;
+  muscle_map_back?: string;
+  alternatives?: { name: string; exercise_id?: string; required_equipment?: string[] }[];
+  substitutes?: string[];
+  source_url?: string;
+  attribution?: string;
+  local_customizations?: {
+    name?: string;
+    instructions?: string[];
+    difficulty?: "beginner" | "intermediate" | "advanced";
+    primaryMuscles?: string[];
+    form_guide?: string;
+    breathing_guide?: string;
+    common_mistakes?: string;
+    safety_precautions?: string;
+    beginner_guidance?: string;
+    sets_reps?: string;
+    video_branded?: string;
+    video_unbranded?: string;
+  };
+}
+
+export interface ImportJobState {
+  status: "idle" | "running" | "completed" | "failed" | "stopped" | "dry-run-completed";
+  progress: number;
+  processed: number;
+  total: number;
+  newRecords: number;
+  updatedRecords: number;
+  skippedRecords: number;
+  duplicateRecords: number;
+  failedRecords: number;
+  missingMedia: number;
+  lastSuccessfulSync: string;
+  logs: string[];
+  errorLogs: { id?: string; name?: string; error: string; timestamp: string }[];
+  dryRun: boolean;
+  offset: number;
+}
+
 

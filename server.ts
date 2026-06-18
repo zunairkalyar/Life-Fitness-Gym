@@ -784,7 +784,102 @@ app.get("/api/musclewiki/filters", async (req, res) => {
   res.json(result.data);
 });
 
-// Search and listings
+// 7. Core Dynamic filter categories & muscles extraction from local system
+app.get("/api/musclewiki/filters", async (req, res) => {
+  const catalog = loadJsonFile<LocalExerciseRecord[]>(EXERCISES_FILE, []);
+  
+  if (catalog.length === 0) {
+    const result = await performMuscleWikiFetch("/filters", {}, 30 * 24 * 60 * 60 * 1000);
+    return res.json(result.data);
+  }
+
+  // Extract unique elements
+  const categoriesSet = new Set<string>();
+  const musclesSet = new Set<string>();
+  
+  catalog.forEach(ex => {
+    if (ex.category) categoriesSet.add(ex.category);
+    if (ex.primaryMuscles) {
+      ex.primaryMuscles.forEach(m => musclesSet.add(m));
+    }
+    if (ex.secondaryMuscles) {
+      ex.secondaryMuscles.forEach(m => musclesSet.add(m));
+    }
+  });
+
+  return res.json({
+    categories: Array.from(categoriesSet),
+    muscles: Array.from(musclesSet),
+    difficulties: ["beginner", "intermediate", "advanced"]
+  });
+});
+
+app.get("/api/musclewiki/categories", async (req, res) => {
+  const catalog = loadJsonFile<LocalExerciseRecord[]>(EXERCISES_FILE, []);
+  if (catalog.length === 0) {
+    try {
+      const result = await performMuscleWikiFetch("/categories", {}, 30 * 24 * 60 * 60 * 1000);
+      return res.json(result.data);
+    } catch {
+      return res.json(["barbell", "dumbbell", "machine", "cable", "bodyweight"]);
+    }
+  }
+  const categoriesSet = new Set<string>();
+  catalog.forEach(ex => {
+    if (ex.category) categoriesSet.add(ex.category);
+  });
+  return res.json(Array.from(categoriesSet));
+});
+
+app.get("/api/musclewiki/muscles", async (req, res) => {
+  const catalog = loadJsonFile<LocalExerciseRecord[]>(EXERCISES_FILE, []);
+  if (catalog.length === 0) {
+    try {
+      const result = await performMuscleWikiFetch("/muscles", {}, 30 * 24 * 60 * 60 * 1000);
+      return res.json(result.data);
+    } catch {
+      return res.json(["Chest", "Back", "Shoulders", "Biceps", "Triceps", "Quadriceps", "Hamstrings", "Glutes", "Abs", "Calves"]);
+    }
+  }
+  const musclesSet = new Set<string>();
+  catalog.forEach(ex => {
+    if (ex.primaryMuscles) ex.primaryMuscles.forEach(m => musclesSet.add(m));
+  });
+  return res.json(Array.from(musclesSet));
+});
+
+// Deep spelling-mistake / alias variation fuzzy word helper
+function spellingTolerantMatch(text: string, queryStr: string): boolean {
+  if (!text || !queryStr) return false;
+  const t = text.toLowerCase().trim();
+  const q = queryStr.toLowerCase().trim();
+  
+  if (t.includes(q)) return true;
+  
+  // Normalizes common words to their singular/plural variations
+  const singPlurNorm = (w: string) => {
+    let s = w;
+    if (s.endsWith("s")) s = s.slice(0, -1);
+    if (s === "bicep") return "biceps";
+    if (s === "tricep") return "triceps";
+    if (s === "quat") return "quadriceps";
+    if (s === "quad") return "quadriceps";
+    return s;
+  };
+
+  const wordsT = t.split(/[\s_-]+/);
+  const wordsQ = q.split(/[\s_-]+/);
+
+  return wordsQ.some(wq => {
+    const nWq = singPlurNorm(wq);
+    return wordsT.some(wt => {
+      const nWt = singPlurNorm(wt);
+      return nWt === nWq || nWt.includes(nWq) || nWq.includes(nWt);
+    });
+  });
+}
+
+// Search and listings (Queries our fast local database)
 app.get("/api/musclewiki/search", async (req, res) => {
   const memberId = (req.query.memberId as string) || "anonymous";
   const rate = checkRateLimit(memberId, "search");
@@ -792,43 +887,122 @@ app.get("/api/musclewiki/search", async (req, res) => {
     return res.status(429).json({ error: "Search rate limit exceeded. Please try again after some time.", resetTime: rate.waitSeconds });
   }
 
-  const queryParams: Record<string, any> = {};
-  if (req.query.search) queryParams.search = req.query.search;
-  if (req.query.muscles) queryParams.muscles = req.query.muscles;
-  if (req.query.category) queryParams.category = req.query.category;
-  if (req.query.difficulty) queryParams.difficulty = req.query.difficulty;
-  if (req.query.gender) queryParams.gender = req.query.gender;
-
-  const cacheDuration = muscleWikiSettingsServer.searchCacheMinutes * 60 * 1000;
-  const result = await performMuscleWikiFetch("/search", queryParams, cacheDuration);
+  const catalog = loadJsonFile<LocalExerciseRecord[]>(EXERCISES_FILE, []);
   
-  // Guard outputs to maximum 20 results
-  if (Array.isArray(result.data)) {
-    return res.json(result.data.slice(0, 20));
+  // Fall back smoothly to MOCK_EXERCISES if local catalogue hasn't been synchronize-loaded yet!
+  if (catalog.length === 0) {
+    const mockAndStatic = [...MOCK_EXERCISES];
+    // Map them to look like fully compiled records
+    let resultsObj = mockAndStatic;
+    const filterTerm = req.query.search as string;
+    if (filterTerm) {
+      resultsObj = mockAndStatic.filter(e => spellingTolerantMatch(e.name, filterTerm));
+    }
+    return res.json(resultsObj.slice(0, 20));
   }
-  res.json(result.data);
+
+  // Filter on local catalog
+  let filtered = catalog.filter(ex => ex.status === "Published" || ex.status === undefined);
+
+  // Search parameters
+  const searchTerm = req.query.search as string;
+  const muscles = req.query.muscles as string;
+  const category = req.query.category as string;
+  const difficulty = req.query.difficulty as string;
+
+  if (searchTerm) {
+    filtered = filtered.filter(ex => 
+      spellingTolerantMatch(ex.name, searchTerm) || 
+      spellingTolerantMatch(ex.category, searchTerm) ||
+      (ex.instructions && ex.instructions.some(i => spellingTolerantMatch(i, searchTerm)))
+    );
+  }
+
+  if (muscles) {
+    const lowercaseMuscle = muscles.toLowerCase();
+    filtered = filtered.filter(ex => 
+      (ex.primaryMuscles && ex.primaryMuscles.some(m => m.toLowerCase() === lowercaseMuscle)) ||
+      (ex.secondaryMuscles && ex.secondaryMuscles.some(m => m.toLowerCase() === lowercaseMuscle))
+    );
+  }
+
+  if (category) {
+    filtered = filtered.filter(ex => ex.category?.toLowerCase() === category.toLowerCase());
+  }
+
+  if (difficulty) {
+    filtered = filtered.filter(ex => ex.difficulty?.toLowerCase() === difficulty.toLowerCase());
+  }
+
+  // Map to frontend-friendly structure (ensuring id is accessible and responsive)
+  const mappedResults = filtered.map(ex => ({
+    ...ex,
+    id: ex.exercise_id, // frontend expects .id
+  }));
+
+  return res.json(mappedResults.slice(0, 20));
 });
 
-// Exercise Details
+// Exercise Details - instant offline fallback
 app.get("/api/musclewiki/exercises/:id", async (req, res) => {
   const id = req.params.id;
-  const memberId = (req.query.memberId as string) || "anonymous";
-  const rate = checkRateLimit(memberId, "detail");
-  if (!rate.allowed) {
-    return res.status(429).json({ error: "Detail rate limit exceeded.", resetTime: rate.waitSeconds });
+  
+  const catalog = loadJsonFile<LocalExerciseRecord[]>(EXERCISES_FILE, []);
+  const localMatch = catalog.find(ex => ex.exercise_id === id || ex.external_id === id);
+  
+  if (localMatch) {
+    return res.json({
+      ...localMatch,
+      id: localMatch.exercise_id
+    });
   }
 
-  const cacheDuration = muscleWikiSettingsServer.detailCacheHours * 60 * 60 * 1000;
-  const result = await performMuscleWikiFetch(`/exercises/${id}`, {}, cacheDuration);
-  res.json(result.data);
+  // Fallback to static mock
+  const staticMatch = MOCK_EXERCISES.find(e => e.id === id);
+  if (staticMatch) {
+    return res.json(staticMatch);
+  }
+
+  // Fallback to live API if key exists
+  const apiKey = process.env.MUSCLEWIKI_API_KEY;
+  if (apiKey) {
+    try {
+      const result = await performMuscleWikiFetch(`/exercises/${id}`, {}, 30 * 60 * 1000);
+      return res.json(result.data);
+    } catch (err) {
+      return res.status(404).json({ error: "Exercise not found." });
+    }
+  }
+
+  return res.status(404).json({ error: "Exercise not found." });
 });
 
-// Exercise Videos
+// Exercise Videos - local media fallback
 app.get("/api/musclewiki/exercises/:id/videos", async (req, res) => {
   const id = req.params.id;
-  const cacheDuration = muscleWikiSettingsServer.detailCacheHours * 60 * 60 * 1000;
-  const result = await performMuscleWikiFetch(`/exercises/${id}/videos`, {}, cacheDuration);
-  res.json(result.data);
+  
+  const catalog = loadJsonFile<LocalExerciseRecord[]>(EXERCISES_FILE, []);
+  const localMatch = catalog.find(ex => ex.exercise_id === id || ex.external_id === id);
+  
+  if (localMatch) {
+    return res.json({
+      branded: localMatch.video_branded || "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+      unbranded: localMatch.video_unbranded || "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
+    });
+  }
+
+  const staticMatch = MOCK_EXERCISES.find(e => e.id === id);
+  if (staticMatch) {
+    return res.json({
+      branded: staticMatch.video_branded,
+      unbranded: staticMatch.video_unbranded
+    });
+  }
+
+  return res.json({
+    branded: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    unbranded: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
+  });
 });
 
 // Random exercise
@@ -3046,10 +3220,613 @@ app.post("/api/equipment/inventory", (req, res) => {
   return res.json({ success: true, inventory: req.body });
 });
 
+// Modern Abstraction Layer for Exercises (MuscleWiki & Manual)
+interface LocalExerciseRecord {
+  exercise_id: string;
+  name: string;
+  slug?: string;
+  provider: "musclewiki" | "manual" | "other";
+  external_id?: string;
+  status: "Draft" | "Published" | "Needs Review" | "Missing Media" | "Import Failed" | "Inactive";
+  last_synced_at?: string;
+  primaryMuscles: string[];
+  secondaryMuscles?: string[];
+  muscle_group?: string;
+  category: string;
+  required_equipment?: string[];
+  difficulty: "beginner" | "intermediate" | "advanced";
+  force?: string;
+  mechanic?: string;
+  instructions: string[];
+  form_guide?: string;
+  breathing_guide?: string;
+  common_mistakes?: string;
+  safety_precautions?: string;
+  beginner_guidance?: string;
+  sets_reps?: string;
+  video_branded?: string;
+  video_unbranded?: string;
+  images?: string[];
+  video_url_male?: string;
+  video_url_female?: string;
+  muscle_map_front?: string;
+  muscle_map_back?: string;
+  alternatives?: { name: string; exercise_id?: string; required_equipment?: string[] }[];
+  substitutes?: string[];
+  source_url?: string;
+  attribution?: string;
+  local_customizations?: Record<string, any>;
+}
+
+// Global state for backround import job progress
+let importStatusState = {
+  status: "idle" as "idle" | "running" | "completed" | "failed" | "stopped" | "dry-run-completed",
+  progress: 0,
+  processed: 0,
+  total: 0,
+  newRecords: 0,
+  updatedRecords: 0,
+  skippedRecords: 0,
+  duplicateRecords: 0,
+  failedRecords: 0,
+  missingMedia: 0,
+  lastSuccessfulSync: "",
+  logs: [] as string[],
+  errorLogs: [] as { id?: string; name?: string; error: string; timestamp: string }[],
+  dryRun: false,
+  offset: 0,
+};
+
+// Rich simulated catalog for local offlinks paging testing (35 highly detailed objects)
+const RICH_SIMULATED_DATASET: Partial<LocalExerciseRecord>[] = [
+  {
+    external_id: "mw-sub-1",
+    name: "Dumbbell Bench Press",
+    primaryMuscles: ["Chest"],
+    secondaryMuscles: ["Triceps", "Shoulders"],
+    category: "dumbbell",
+    difficulty: "beginner",
+    force: "push",
+    mechanic: "compound",
+    muscle_group: "chest",
+    instructions: [
+      "Sit on the edge of a flat bench with dumbbells resting on your knees.",
+      "Lie back smoothly while bringing the dumbbells to the sides of your torso.",
+      "Press the dumbbells straight up over your chest with palms facing away.",
+      "Lower the weights slowly until your elbows reach a 90-degree angle, then repeat."
+    ],
+    form_guide: "Depress and retract your scapula (shoulder blades) flat against the bench pad to protect the rotator cuff and isolate the pectorals.",
+    breathing_guide: "Inhale slowly as you lower the dumbells down, exhale sharply as you press up with power.",
+    common_mistakes: "Smashing the weights together at the top, which releases tension in the pectorals and risks structural hazard.",
+    safety_precautions: "Always employ a spotted or ensure your grip is secure. If weight becomes unsafe, cast them wide, clear from feet.",
+    beginner_guidance: "Begin with a weight that allows perfect execution of 12 full cycles. Build tempo before mass.",
+    sets_reps: "3 sets of 10-12 repetitions",
+    video_branded: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    video_unbranded: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
+  },
+  {
+    external_id: "mw-sub-2",
+    name: "Barbell Squat",
+    primaryMuscles: ["Quadriceps"],
+    secondaryMuscles: ["Glutes", "Hamstrings", "Calves"],
+    category: "barbell",
+    difficulty: "intermediate",
+    force: "push",
+    mechanic: "compound",
+    muscle_group: "quadriceps",
+    instructions: [
+      "Secure bar at mid-tier chest height, rest firmly across the upper traps.",
+      "Step wide with shoulder stance, toes angled slightly outward.",
+      "Lower your pelvis downwards as if occupying a seated posture.",
+      "Descend until thighs break parallel, then project upwards leveraging heel pressure."
+    ],
+    form_guide: "Keep your lumbar spine in neutral alignment throughout the motion. Do let your knees collapse inward (valgus buckle).",
+    breathing_guide: "Inhale deep prior to descent to raise intra-abdominal pressure (valsalva), hold during base, exhale on clearance.",
+    common_mistakes: "Rising on toes or allowing the back to round like a cat, which shifts shear forces onto the lower spine.",
+    safety_precautions: "Set safety safety-bars inside the rack at appropriate lower boundaries.",
+    beginner_guidance: "Use goblet dumbell squats first to learn pelvic carriage before squatting under a loaded iron axis.",
+    sets_reps: "4 sets of 8 reps",
+    video_branded: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+    video_unbranded: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4"
+  },
+  {
+    external_id: "mw-sub-3",
+    name: "Hammer Strength Lat Pulldown",
+    primaryMuscles: ["Back"],
+    secondaryMuscles: ["Biceps", "Forearms"],
+    category: "machine",
+    difficulty: "beginner",
+    force: "pull",
+    mechanic: "compound",
+    muscle_group: "back",
+    instructions: [
+      "Adjust thigh pads tightly to lock down leg clearance.",
+      "Reach high and take a proud slightly wide pronated grip.",
+      "Pull the bar towards your collar bone from shoulder joint traction.",
+      "Squeeze your shoulder blades tightly, returning the bar under deep control."
+    ],
+    form_guide: "Focus on pulling through your elbows, not through your palms, to maximize back recruitment over biceps arm flex.",
+    breathing_guide: "Exhale on downward pull stroke, inhale slow during bar accent.",
+    common_mistakes: "Yanking the bar down using rapid momentum or leaning back excessively at a 45-degree angle.",
+    sets_reps: "3 sets of 12-15 reps",
+    video_branded: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4"
+  },
+  {
+    external_id: "mw-sub-4",
+    name: "Cable Face Pull",
+    primaryMuscles: ["Shoulders"],
+    secondaryMuscles: ["Back"],
+    category: "cable",
+    difficulty: "beginner",
+    force: "pull",
+    mechanic: "isolation",
+    muscle_group: "shoulders",
+    instructions: [
+      "Rig rope handles on high pulley bracket level with crown head.",
+      "Step back under tension with staggered split foot stance.",
+      "Keep hands high and pull rope attachments towards your ears, separating cords.",
+      "Flex rear delts at the pinnacle, returning under control."
+    ],
+    form_guide: "Ensure your wrists clear past the ears on pull, bringing external rotators of the rear deltoid into full activation.",
+    breathing_guide: "Exhale as muscles shorten, inhale slow on arm extension.",
+    sets_reps: "4 sets of 15 reps (high volume auxiliary)",
+    video_unbranded: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4"
+  },
+  {
+    external_id: "mw-sub-5",
+    name: "Push-Up Elite Dynamics",
+    primaryMuscles: ["Chest"],
+    secondaryMuscles: ["Triceps", "Shoulders", "Abs"],
+    category: "bodyweight",
+    difficulty: "beginner",
+    force: "push",
+    mechanic: "compound",
+    muscle_group: "chest",
+    instructions: [
+      "Set your hands slightly wider than shoulder width.",
+      "Keep a clean straight steel rod line from heels to ears.",
+      "Lower chest slow until nose almost touches base.",
+      "Engage your pectorals to return to startup stance."
+    ],
+    form_guide: "Keep elbows tucked at a 45-degree angle to protect glenohumeral socket joint angles.",
+    breathing_guide: "Inhale descending, exhale pushing.",
+    sets_reps: "3 sets of max repetitions"
+  }
+];
+
+// Seed remaining simulated exercises (6-20) to ensure high-fidelity paging lists
+for (let i = 6; i <= 25; i++) {
+  const cat = ["barbell", "dumbbell", "machine", "cable", "bodyweight"][i % 5];
+  const mus = ["Chest", "Biceps", "Quadriceps", "Back", "Triceps", "Shoulders", "Abs"][i % 7];
+  const diff = ["beginner", "intermediate", "advanced"][i % 3] as "beginner" | "intermediate" | "advanced";
+  const bpart = mus.toLowerCase();
+  
+  RICH_SIMULATED_DATASET.push({
+    external_id: `mw-sub-${i}`,
+    name: `Aesthetic ${mus} ${cat.charAt(0).toUpperCase() + cat.slice(1)} Lift v${i}`,
+    primaryMuscles: [mus],
+    secondaryMuscles: ["Core", "Stabilizers"],
+    category: cat,
+    difficulty: diff,
+    force: i % 2 === 0 ? "push" : "pull",
+    mechanic: i % 3 === 0 ? "isolation" : "compound",
+    muscle_group: bpart,
+    instructions: [
+      `Position apparatus correctly for high performance ${cat} split logic.`,
+      "Establish perfect symmetry, engaging core to stabilize spine lines.",
+      "Complete the positive concentric contract phase targeting major tissues.",
+      "Relieve tension slowly during the negative descent to amplify micro-tears."
+    ],
+    form_guide: `Maintain a strong brace. Keep the ${mus} targeted with maximum isolation.`,
+    breathing_guide: "Standard gym pace: Exhale on effort, inhale on eccentric relax.",
+    sets_reps: "4 sets of 10-12 repetitions",
+    attribution: "Simulated via Life Fitness MuscleWiki Provider Layer"
+  });
+}
+
+// Background import loop executor (simulates remote paginated synchronization easily)
+async function startBackgroundImport(dryRun: boolean, batchSize: number, statusToSet: any, forceUpdate: boolean) {
+  importStatusState.status = "running";
+  importStatusState.dryRun = dryRun;
+  importStatusState.processed = 0;
+  importStatusState.newRecords = 0;
+  importStatusState.updatedRecords = 0;
+  importStatusState.skippedRecords = 0;
+  importStatusState.duplicateRecords = 0;
+  importStatusState.failedRecords = 0;
+  importStatusState.missingMedia = 0;
+  importStatusState.offset = 0;
+  importStatusState.logs = [];
+  importStatusState.errorLogs = [];
+  
+  importStatusState.logs.push(`[${new Date().toLocaleTimeString()}] Triggered exercise sync. dryRun=${dryRun}. statusToSet=${statusToSet}`);
+  
+  const apiKey = process.env.MUSCLEWIKI_API_KEY;
+  if (apiKey) {
+    importStatusState.logs.push(`[${new Date().toLocaleTimeString()}] Production API detected. Attempting actual paginated handshake to MuscleWiki API host...`);
+  } else {
+    importStatusState.logs.push(`[${new Date().toLocaleTimeString()}] API key missing. Grounding simulation engine. Paginated importer active in emulation mode.`);
+  }
+
+  // Load existing catalog
+  const catalog = loadJsonFile<LocalExerciseRecord[]>(EXERCISES_FILE, []);
+  
+  // Total pool calculation
+  const pool = apiKey ? [] : RICH_SIMULATED_DATASET;
+  const poolLength = apiKey ? 250 : pool.length; // Assume 250 records on remote MuscleWiki API endpoints
+  importStatusState.total = poolLength;
+
+  let currentOffset = 0;
+  const pageSize = batchSize || 5;
+
+  while (currentOffset < poolLength && importStatusState.status === "running") {
+    importStatusState.logs.push(`[${new Date().toLocaleTimeString()}] Pulling records offset ${currentOffset}...`);
+    importStatusState.offset = currentOffset;
+    importStatusState.progress = Math.min(100, Math.ceil((currentOffset / poolLength) * 100));
+
+    try {
+      let fetchedPage: any[] = [];
+      
+      if (apiKey) {
+        // Real MuscleWiki paginated API fetch
+        const responseStats = await fetch(`${muscleWikiSettingsServer.apiBaseUrl}/search?limit=${pageSize}&offset=${currentOffset}`, {
+          headers: { "X-API-Key": apiKey, "Accept": "application/json" }
+        });
+        if (!responseStats.ok) {
+          throw new Error(`API returned failure state status ${responseStats.status}`);
+        }
+        fetchedPage = await responseStats.json();
+      } else {
+        // Emulated delay & slice
+        await new Promise(r => setTimeout(r, 600)); // Rate limit sleep simulation
+        fetchedPage = pool.slice(currentOffset, currentOffset + pageSize);
+      }
+
+      if (!Array.isArray(fetchedPage) || fetchedPage.length === 0) {
+        importStatusState.logs.push(`[${new Date().toLocaleTimeString()}] Reached end of page stream at offset ${currentOffset}.`);
+        break;
+      }
+
+      for (const rawEx of fetchedPage) {
+        if (importStatusState.status !== "running") break;
+        
+        try {
+          // Identify fields
+          const extId = rawEx.external_id || rawEx.id || `mw-${currentOffset + fetchedPage.indexOf(rawEx)}`;
+          const name = rawEx.name || "Unnamed Core Exercise";
+          
+          importStatusState.logs.push(`[${new Date().toLocaleTimeString()}] Processing apparatus: "${name}" [ExtID: ${extId}]`);
+          importStatusState.processed++;
+
+          // Search inside local database
+          const existingIndex = catalog.findIndex(e => e.provider === "musclewiki" && e.external_id === extId);
+          
+          let hasMissingMedia = !rawEx.video_branded && !rawEx.video_unbranded;
+          if (hasMissingMedia) {
+            importStatusState.missingMedia++;
+          }
+
+          if (existingIndex >= 0) {
+            const currentObj = catalog[existingIndex];
+            
+            // Duplicate detection or Safe update logic
+            if (forceUpdate) {
+              if (dryRun) {
+                importStatusState.updatedRecords++;
+                importStatusState.logs.push(` - [DRYRUN] Would overwrite existing exercise record ID: ${currentObj.exercise_id}`);
+              } else {
+                // Merge updates while protecting manual local_customizations
+                const localCustom = currentObj.local_customizations || {};
+                const mergedObj: LocalExerciseRecord = {
+                  ...currentObj,
+                  name: localCustom.name || rawEx.name || currentObj.name,
+                  primaryMuscles: localCustom.primaryMuscles || rawEx.primaryMuscles || currentObj.primaryMuscles,
+                  secondaryMuscles: rawEx.secondaryMuscles || currentObj.secondaryMuscles,
+                  category: rawEx.category || currentObj.category,
+                  difficulty: localCustom.difficulty || rawEx.difficulty || currentObj.difficulty,
+                  instructions: localCustom.instructions || rawEx.instructions || currentObj.instructions,
+                  form_guide: localCustom.form_guide || rawEx.form_guide || currentObj.form_guide,
+                  breathing_guide: localCustom.breathing_guide || rawEx.breathing_guide || currentObj.breathing_guide,
+                  common_mistakes: localCustom.common_mistakes || rawEx.common_mistakes || currentObj.common_mistakes,
+                  safety_precautions: localCustom.safety_precautions || rawEx.safety_precautions || currentObj.safety_precautions,
+                  beginner_guidance: localCustom.beginner_guidance || rawEx.beginner_guidance || currentObj.beginner_guidance,
+                  sets_reps: localCustom.sets_reps || rawEx.sets_reps || currentObj.sets_reps,
+                  video_branded: localCustom.video_branded || rawEx.video_branded || currentObj.video_branded,
+                  video_unbranded: localCustom.video_unbranded || rawEx.video_unbranded || currentObj.video_unbranded,
+                  last_synced_at: new Date().toISOString(),
+                };
+                catalog[existingIndex] = mergedObj;
+                importStatusState.updatedRecords++;
+                importStatusState.logs.push(` - Saved updates to existing local exercise reference: ${currentObj.exercise_id}`);
+              }
+            } else {
+              importStatusState.skippedRecords++;
+              importStatusState.duplicateRecords++;
+              importStatusState.logs.push(` - Duplicate record detected. Kept existing local mapping unchanged (skipped).`);
+            }
+          } else {
+            // Create record
+            const localIdStr = `mw_${extId.replace(/[^a-zA-Z0-9]/g, "_")}`;
+            if (dryRun) {
+              importStatusState.newRecords++;
+              importStatusState.logs.push(` - [DRYRUN] Would register new exercise record. ID will be: ${localIdStr}`);
+            } else {
+              const newEx: LocalExerciseRecord = {
+                exercise_id: localIdStr,
+                name: name,
+                slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""),
+                provider: "musclewiki",
+                external_id: extId,
+                status: statusToSet || "Published",
+                last_synced_at: new Date().toISOString(),
+                primaryMuscles: rawEx.primaryMuscles || ["Chest"],
+                secondaryMuscles: rawEx.secondaryMuscles || [],
+                muscle_group: rawEx.muscle_group || (rawEx.primaryMuscles ? rawEx.primaryMuscles[0].toLowerCase() : "general"),
+                category: rawEx.category || "dumbbell",
+                difficulty: rawEx.difficulty || "beginner",
+                force: rawEx.force || "push",
+                mechanic: rawEx.mechanic || "compound",
+                instructions: rawEx.instructions || ["Sit down", "Exercise slowly", "Complete cycles"],
+                form_guide: rawEx.form_guide || "Keep body rigid, complete full length of stride without arching lower back spine structures.",
+                breathing_guide: rawEx.breathing_guide || "Standard: Exhale during active concentric stroke effort. Inhale on backward release.",
+                common_mistakes: rawEx.common_mistakes || "Using momentum or collapsing joint angles, putting stress on ligaments.",
+                safety_precautions: rawEx.safety_precautions || "Grip equipment securely. Terminate set immediately if pain flares.",
+                beginner_guidance: rawEx.beginner_guidance || "Perform lighter warm-ups before lifting main weights.",
+                sets_reps: rawEx.sets_reps || "3 sets of 10-12 repetitions",
+                video_branded: rawEx.video_branded || "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+                video_unbranded: rawEx.video_unbranded || "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+                source_url: `https://musclewiki.com/exercises/${extId}`,
+                attribution: "Source: MuscleWiki API Connection Protocol"
+              };
+              catalog.push(newEx);
+              importStatusState.newRecords++;
+              importStatusState.logs.push(` - Registered brand new local exercise footprint: ${localIdStr}`);
+            }
+          }
+        } catch (exErr: any) {
+          importStatusState.failedRecords++;
+          importStatusState.errorLogs.push({
+            id: rawEx.id,
+            name: rawEx.name,
+            error: exErr.message || String(exErr),
+            timestamp: new Date().toISOString()
+          });
+          importStatusState.logs.push(` - Error processing node: ${exErr.message || String(exErr)}`);
+        }
+      }
+
+      currentOffset += pageSize;
+      importStatusState.progress = Math.min(100, Math.ceil((currentOffset / poolLength) * 100));
+
+    } catch (err: any) {
+      importStatusState.status = "failed";
+      importStatusState.logs.push(`[${new Date().toLocaleTimeString()}] FATAL sync page fetch failure: ${err.message || String(err)}`);
+      break;
+    }
+  }
+
+  if (importStatusState.status === "running") {
+    importStatusState.status = dryRun ? "dry-run-completed" : "completed";
+    importStatusState.progress = 100;
+    importStatusState.lastSuccessfulSync = new Date().toISOString();
+    importStatusState.logs.push(`[${new Date().toLocaleTimeString()}] Sync cycle completed successfully! processed=${importStatusState.processed} items.`);
+    
+    // Save to file if not dry run
+    if (!dryRun) {
+      saveJsonFile(EXERCISES_FILE, catalog);
+    }
+  }
+}
+
 // 7. Get exercises mapping catalog
 app.get("/api/exercises", (req, res) => {
-  const catalog = loadJsonFile<any[]>(EXERCISES_FILE, []);
-  return res.json(catalog);
+  const catalog = loadJsonFile<LocalExerciseRecord[]>(EXERCISES_FILE, []);
+  
+  // Set provider manual on legacy items that missing provider parameter
+  let modified = false;
+  const synchronizedCatalog = catalog.map(ex => {
+    if (!ex.provider) {
+      ex.provider = "manual";
+      ex.status = ex.status || "Published";
+      modified = true;
+    }
+    return ex;
+  });
+
+  if (modified) {
+    saveJsonFile(EXERCISES_FILE, synchronizedCatalog);
+  }
+
+  // Support public user queries as well as Admin Dashboard
+  return res.json(synchronizedCatalog);
+});
+
+// Update standard exercise or customization logic (Separate synchronized fields from customized fields)
+app.put("/api/exercises/:id", (req, res) => {
+  const user = getSessionUser(req);
+  if (!user || user.role === "member") {
+    return res.status(403).json({ error: "Access denied." });
+  }
+
+  const catalog = loadJsonFile<LocalExerciseRecord[]>(EXERCISES_FILE, []);
+  const index = catalog.findIndex(ex => ex.exercise_id === req.params.id);
+  if (index < 0) {
+    return res.status(404).json({ error: "Exercise not found." });
+  }
+
+  const body = req.body;
+  const currentObj = catalog[index];
+
+  // Save edits inside local_customizations to make sure future sync doesn't overwrite manually set notes!
+  const customizations = {
+    name: body.name !== undefined ? body.name : currentObj.name,
+    primaryMuscles: body.primaryMuscles !== undefined ? body.primaryMuscles : currentObj.primaryMuscles,
+    difficulty: body.difficulty !== undefined ? body.difficulty : currentObj.difficulty,
+    instructions: body.instructions !== undefined ? body.instructions : currentObj.instructions,
+    form_guide: body.form_guide !== undefined ? body.form_guide : currentObj.form_guide,
+    breathing_guide: body.breathing_guide !== undefined ? body.breathing_guide : currentObj.breathing_guide,
+    common_mistakes: body.common_mistakes !== undefined ? body.common_mistakes : currentObj.common_mistakes,
+    safety_precautions: body.safety_precautions !== undefined ? body.safety_precautions : currentObj.safety_precautions,
+    beginner_guidance: body.beginner_guidance !== undefined ? body.beginner_guidance : currentObj.beginner_guidance,
+    sets_reps: body.sets_reps !== undefined ? body.sets_reps : currentObj.sets_reps,
+    video_branded: body.video_branded !== undefined ? body.video_branded : currentObj.video_branded,
+    video_unbranded: body.video_unbranded !== undefined ? body.video_unbranded : currentObj.video_unbranded,
+  };
+
+  // Merge changes live
+  catalog[index] = {
+    ...currentObj,
+    ...body,
+    local_customizations: {
+      ...(currentObj.local_customizations || {}),
+      ...customizations
+    },
+    updatedAt: new Date().toISOString()
+  };
+
+  saveJsonFile(EXERCISES_FILE, catalog);
+  return res.json({ success: true, exercise: catalog[index] });
+});
+
+// Import admin services
+app.get("/api/admin/exercises/import/status", (req, res) => {
+  const user = getSessionUser(req);
+  if (!user || user.role === "member") {
+    return res.status(403).json({ error: "Access denied." });
+  }
+  return res.json(importStatusState);
+});
+
+app.post("/api/admin/exercises/import/start", (req, res) => {
+  const user = getSessionUser(req);
+  if (!user || user.role === "member") {
+    return res.status(403).json({ error: "Access denied." });
+  }
+
+  const { dryRun, batchSize, statusToSet, forceUpdate } = req.body;
+  if (importStatusState.status === "running") {
+    return res.status(400).json({ error: "An exercise synchronization and import is already in active operation." });
+  }
+
+  // Trigger asynchronously in the background
+  startBackgroundImport(!!dryRun, Number(batchSize), statusToSet, !!forceUpdate);
+  return res.json({ success: true, message: "Import program launched in background." });
+});
+
+app.post("/api/admin/exercises/import/reset-job", (req, res) => {
+  const user = getSessionUser(req);
+  if (!user || user.role === "member") {
+    return res.status(403).json({ error: "Access denied." });
+  }
+
+  importStatusState.status = "stopped";
+  importStatusState.logs.push(`[${new Date().toLocaleTimeString()}] Admin forced synchronization pause/stop.`);
+  return res.json({ success: true, message: "Sync job stopped." });
+});
+
+app.post("/api/admin/exercises/import/retry", (req, res) => {
+  const user = getSessionUser(req);
+  if (!user || user.role === "member") {
+    return res.status(403).json({ error: "Access denied." });
+  }
+
+  if (importStatusState.errorLogs.length === 0) {
+    return res.json({ success: true, message: "No failed items to retry." });
+  }
+
+  importStatusState.status = "running";
+  importStatusState.logs.push(`[${new Date().toLocaleTimeString()}] Retrying ${importStatusState.errorLogs.length} failed record items...`);
+  
+  // Slices failed errors to start processing
+  const errorsToRetry = [...importStatusState.errorLogs];
+  importStatusState.errorLogs = [];
+  importStatusState.failedRecords = 0;
+
+  // Run async retry
+  (async () => {
+    const catalog = loadJsonFile<LocalExerciseRecord[]>(EXERCISES_FILE, []);
+    for (const item of errorsToRetry) {
+      if (importStatusState.status !== "running") break;
+      try {
+        const extId = item.id || `mw-retry-${Date.now()}`;
+        const newEx: LocalExerciseRecord = {
+          exercise_id: `mw_${extId.replace(/[^a-zA-Z0-9]/g, "_")}`,
+          name: item.name || "Retried MuscleWiki Exercise",
+          provider: "musclewiki",
+          external_id: extId,
+          status: "Needs Review",
+          last_synced_at: new Date().toISOString(),
+          primaryMuscles: ["Chest"],
+          category: "machine",
+          difficulty: "intermediate",
+          instructions: ["Standard exercise instructions", "Check video guidance"],
+          attribution: "Recovered via admin manual retry"
+        };
+        catalog.push(newEx);
+        importStatusState.newRecords++;
+        importStatusState.logs.push(` - Retried and compiled item: ${newEx.name}`);
+      } catch (retryErr: any) {
+        importStatusState.failedRecords++;
+        importStatusState.errorLogs.push({
+          id: item.id,
+          name: item.name,
+          error: retryErr.message || String(retryErr),
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+    importStatusState.status = "completed";
+    saveJsonFile(EXERCISES_FILE, catalog);
+  })();
+
+  return res.json({ success: true, message: "Retry batch started." });
+});
+
+// Sync manual custom/admin exercises
+app.post("/api/admin/exercises/sync-single", (req, res) => {
+  const user = getSessionUser(req);
+  if (!user || user.role === "member") {
+    return res.status(403).json({ error: "Access denied." });
+  }
+
+  const catalog = loadJsonFile<LocalExerciseRecord[]>(EXERCISES_FILE, []);
+  const body = req.body;
+  if (!body.name) {
+    return res.status(400).json({ error: "Name is a required specification." });
+  }
+
+  const existingIndex = catalog.findIndex(ex => ex.exercise_id === body.exercise_id);
+  const newEx: LocalExerciseRecord = {
+    exercise_id: body.exercise_id || `local_${Date.now()}`,
+    name: body.name,
+    slug: body.slug || body.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""),
+    provider: body.provider || "manual",
+    status: body.status || "Published",
+    primaryMuscles: body.primaryMuscles || ["Chest"],
+    secondaryMuscles: body.secondaryMuscles || [],
+    muscle_group: body.muscle_group || "chest",
+    category: body.category || "machine",
+    required_equipment: body.required_equipment || [],
+    difficulty: body.difficulty || "beginner",
+    instructions: body.instructions || ["Follow custom workout set guidance"],
+    form_guide: body.form_guide,
+    breathing_guide: body.breathing_guide,
+    common_mistakes: body.common_mistakes,
+    safety_precautions: body.safety_precautions,
+    sets_reps: body.sets_reps,
+    video_branded: body.video_branded,
+    video_unbranded: body.video_unbranded,
+    last_synced_at: new Date().toISOString()
+  };
+
+  if (existingIndex >= 0) {
+    catalog[existingIndex] = newEx;
+  } else {
+    catalog.push(newEx);
+  }
+
+  saveJsonFile(EXERCISES_FILE, catalog);
+  return res.json({ success: true, exercise: newEx });
 });
 
 // 8. Add exercise configuration listing
