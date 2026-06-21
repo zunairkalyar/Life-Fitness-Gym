@@ -27,6 +27,20 @@ export default function EquipmentFloorMap() {
   const [ticketMachineId, setTicketMachineId] = useState<string>("");
   const [ticketIssue, setTicketIssue] = useState<string>("Cable Friction");
   const [ticketNotes, setTicketNotes] = useState<string>("");
+  const [targetMachineId, setTargetMachineId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const saved = sessionStorage.getItem("flr_target_machine");
+    if (saved) {
+      setTargetMachineId(saved);
+      // Clean up after 8 seconds to return to standard display
+      const timer = setTimeout(() => {
+        setTargetMachineId(null);
+        sessionStorage.removeItem("flr_target_machine");
+      }, 10000);
+      return () => clearTimeout(timer);
+    }
+  }, []);
   
   const [ticketsList, setTicketsList] = useState<{ id: string; date: string; machineName: string; issue: string; notes: string; status: string }[]>(() => {
     try {
@@ -144,35 +158,51 @@ export default function EquipmentFloorMap() {
           <span className="text-[9px] text-neutral-500 uppercase font-black tracking-wider block font-mono">Interactive Floor Plan Stations</span>
           
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {machines.map((mac) => (
-              <div 
-                key={mac.id} 
-                className={`bg-neutral-950 p-4 border rounded-2xl flex flex-col justify-between h-40 transition-all select-none relative ${
-                  mac.status === "Available" 
-                    ? "border-neutral-850 hover:border-emerald-500/30" 
-                    : mac.status === "In Use"
-                    ? "border-amber-500/20 bg-amber-500/5 hover:border-amber-500/30"
-                    : "border-red-500/20 bg-red-500/5"
-                }`}
-              >
-                {/* Station No Indicator */}
-                <div className="absolute top-3 right-3 text-[14px] font-mono font-black text-neutral-800 leading-none">
-                  {mac.stationNo < 10 ? `0${mac.stationNo}` : mac.stationNo}
-                </div>
+            {machines.map((mac) => {
+              const isTargeted = targetMachineId && (
+                mac.id.toLowerCase().includes(targetMachineId.toLowerCase()) ||
+                mac.name.toLowerCase().includes(targetMachineId.toLowerCase()) ||
+                mac.muscles.toLowerCase().includes(targetMachineId.toLowerCase()) ||
+                targetMachineId.toLowerCase().includes(mac.id.toLowerCase()) ||
+                (targetMachineId.toLowerCase() === "squat" && mac.name.toLowerCase().includes("squat")) ||
+                (targetMachineId.toLowerCase() === "chest" && mac.name.toLowerCase().includes("bench")) ||
+                (targetMachineId.toLowerCase() === "lat" && mac.name.toLowerCase().includes("pulldown")) ||
+                (targetMachineId.toLowerCase() === "treadmill" && mac.name.toLowerCase().includes("treadmill"))
+              );
 
-                <div className="space-y-1 z-10">
-                  <span className={`text-[8px] font-mono font-black uppercase tracking-wider px-2 py-0.5 rounded-full border leading-none inline-block mb-1.5 ${
-                    mac.status === "Available" 
-                      ? "bg-green-650/10 border-green-500/20 text-emerald-400" 
+              return (
+                <div 
+                  key={mac.id} 
+                  className={`p-4 border rounded-2xl flex flex-col justify-between h-40 transition-all select-none relative ${
+                    isTargeted
+                      ? "border-red-500 bg-red-950/20 shadow-[0_0_25px_rgba(239,68,68,0.35)] scale-[1.03] z-20 animate-pulse"
+                      : mac.status === "Available" 
+                      ? "bg-neutral-950 border-neutral-850 hover:border-emerald-500/30" 
                       : mac.status === "In Use"
-                      ? "bg-yellow-600/10 border-yellow-500/20 text-yellow-500"
-                      : "bg-red-650/10 border-red-500/20 text-red-500"
-                  }`}>
-                    {mac.status === "Available" ? "AVAILABLE" : mac.status === "In Use" ? "REST SET" : "RESERVED"}
-                  </span>
-                  <h4 className="text-white text-xs font-black uppercase leading-tight pr-5">{mac.name}</h4>
-                  <p className="text-[9px] text-neutral-500 font-semibold leading-normal font-sans pt-1">Muscles: {mac.muscles}</p>
-                </div>
+                      ? "bg-neutral-950 border-amber-500/20 bg-amber-500/5 hover:border-amber-500/30"
+                      : "bg-neutral-950 border-red-500/20 bg-red-500/5"
+                  }`}
+                >
+                  {/* Station No Indicator */}
+                  <div className="absolute top-3 right-3 text-[14px] font-mono font-black text-neutral-800 leading-none">
+                    {mac.stationNo < 10 ? `0${mac.stationNo}` : mac.stationNo}
+                  </div>
+
+                  <div className="space-y-1 z-10">
+                    <span className={`text-[8px] font-mono font-black uppercase tracking-wider px-2 py-0.5 rounded-full border leading-none inline-block mb-1.5 ${
+                      isTargeted
+                        ? "bg-red-500 text-black border-red-400"
+                        : mac.status === "Available" 
+                        ? "bg-green-650/10 border-green-500/20 text-emerald-400" 
+                        : mac.status === "In Use"
+                        ? "bg-yellow-600/10 border-yellow-500/20 text-yellow-500"
+                        : "bg-red-650/10 border-red-500/20 text-red-500"
+                    }`}>
+                      {isTargeted ? "🎯 TARGETED MACHINE" : mac.status === "Available" ? "AVAILABLE" : mac.status === "In Use" ? "REST SET" : "RESERVED"}
+                    </span>
+                    <h4 className="text-white text-xs font-black uppercase leading-tight pr-5">{mac.name}</h4>
+                    <p className="text-[9px] text-neutral-500 font-semibold leading-normal font-sans pt-1">Muscles: {mac.muscles}</p>
+                  </div>
 
                 {/* Local timer overlay or button */}
                 <div className="pt-2 z-10 flex justify-between items-center border-t border-neutral-900/40">
@@ -199,7 +229,8 @@ export default function EquipmentFloorMap() {
                   )}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 

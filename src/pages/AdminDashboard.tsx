@@ -124,7 +124,14 @@ export default function AdminDashboard({
   onClearDemoData
 }: AdminDashboardProps) {
 
-  const [activeTab, setActiveTab] = useState<"overview" | "members" | "applications" | "payments" | "attendance" | "competitions" | "announcements" | "settings" | "audit" | "musclewiki" | "equipment" | "traffic" | "whatsapp">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "members" | "applications" | "payments" | "attendance" | "competitions" | "announcements" | "settings" | "audit" | "musclewiki" | "equipment" | "traffic" | "whatsapp">(() => {
+    const saved = sessionStorage.getItem("admin_target_tab");
+    if (saved === "musclewiki" || saved === "equipment") {
+      sessionStorage.removeItem("admin_target_tab");
+      return saved as any;
+    }
+    return "overview";
+  });
 
   // Search & Filter State
   const [memberSearch, setMemberSearch] = useState("");
@@ -408,8 +415,8 @@ export default function AdminDashboard({
             { id: "competitions", name: "Attempts" },
             { id: "announcements", name: "Notices" },
             { id: "settings", name: "Gym Settings" },
-            { id: "musclewiki", name: "MuscleWiki Integration" },
-            { id: "equipment", name: "Exercise Equipment Mapping" },
+            { id: "musclewiki", name: "Exercises" },
+            { id: "equipment", name: "Machines" },
             { id: "traffic", name: "Traffic Heatmap" },
             { id: "whatsapp", name: "🍀 WhatsApp Automation" }
           ].map((tb) => (

@@ -41,6 +41,8 @@ interface Exercise {
   instructions: string[];
   video_branded?: string;
   video_unbranded?: string;
+  primary_machine_id?: string;
+  secondary_machine_id?: string;
 }
 
 interface ExerciseLibraryProps {
@@ -553,6 +555,31 @@ export default function ExerciseLibrary({ member }: ExerciseLibraryProps) {
                       {/* Expandable step instructions or videos section */}
                       {isExpanded ? (
                         <div className="p-5 border-t border-neutral-900 bg-neutral-950/80 space-y-4 animate-fade-in text-[11px] leading-relaxed">
+                          {/* Station Floor Map integration */}
+                          <div className="p-3 bg-neutral-900/60 border border-neutral-850/60 rounded-xl flex justify-between items-center text-xs">
+                            <div>
+                              <span className="text-red-500 font-extrabold text-[8px] uppercase tracking-wider block">Station Floor Mapping</span>
+                              <span className="text-white font-black uppercase text-[9.5px] block mt-0.5">
+                                📟 Mapped: {ex.name.toLowerCase().includes("bench") ? "Olympic Bench Press" : ex.name.toLowerCase().includes("squat") ? "Linear Smith Cage" : ex.name.toLowerCase().includes("pulldown") || ex.name.toLowerCase().includes("lat") ? "High Lat Tower" : ex.name.toLowerCase().includes("curl") ? "Preacher Arm Bench" : ex.name.toLowerCase().includes("cable") ? "Cable Overpass" : "Dumbbell Racks / Multi-Zone"}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => {
+                                const targetTerm = ex.name.toLowerCase().includes("bench") ? "bench" 
+                                  : ex.name.toLowerCase().includes("squat") ? "squat"
+                                  : ex.name.toLowerCase().includes("pulldown") || ex.name.toLowerCase().includes("lat") ? "lat"
+                                  : ex.name.toLowerCase().includes("curl") ? "curl"
+                                  : ex.name.toLowerCase().includes("cable") ? "cable"
+                                  : "dumbbell";
+                                sessionStorage.setItem("flr_target_machine", targetTerm);
+                                alert(`📍 Map Pin set for physical gym station: "${targetTerm.toUpperCase()}".\nNavigate to "Floor Map & Glitch Desk" tab at top options to view the pulsing station location!`);
+                              }}
+                              className="px-2.5 py-1.5 bg-red-600 hover:bg-red-700 text-black font-black uppercase text-[8px] tracking-wider rounded-lg transition-all cursor-pointer"
+                            >
+                              📍 Locate
+                            </button>
+                          </div>
+
                           {/* Instructions */}
                           <div className="space-y-2">
                             <span className="text-[10px] text-neutral-500 uppercase font-black tracking-widest block">Execution Steps:</span>

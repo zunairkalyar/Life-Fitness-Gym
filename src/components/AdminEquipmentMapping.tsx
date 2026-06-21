@@ -58,6 +58,15 @@ interface PhysicalEquipment {
   last_maintenance_date: string | null;
   review_required: boolean;
   notes: string | null;
+
+  // New High-Fidelity settings requested for individual physical machines
+  beginner_settings?: string;
+  intermediate_settings?: string;
+  advanced_settings?: string;
+  recommended_seat_position?: string;
+  recommended_weight_range?: string;
+  safety_instructions?: string;
+  supported_exercises?: string[];
 }
 
 interface FreeWeightsConfig {
@@ -126,6 +135,20 @@ export default function AdminEquipmentMapping() {
   const [editMfg, setEditMfg] = useState<string>("");
   const [editModel, setEditModel] = useState<string>("");
   const [editEligible, setEditEligible] = useState<boolean>(true);
+
+  // Expanded edit modal states for fixed machine management fields
+  const [selectedMachineToEdit, setSelectedMachineToEdit] = useState<PhysicalEquipment | null>(null);
+  const [editBeginnerSettings, setEditBeginnerSettings] = useState("");
+  const [editIntermediateSettings, setEditIntermediateSettings] = useState("");
+  const [editAdvancedSettings, setEditAdvancedSettings] = useState("");
+  const [editRecommendedSeatPosition, setEditRecommendedSeatPosition] = useState("");
+  const [editRecommendedWeightRange, setEditRecommendedWeightRange] = useState("");
+  const [editSafetyInstructions, setEditSafetyInstructions] = useState("");
+  const [editSupportedExercisesTxt, setEditSupportedExercisesTxt] = useState("");
+  const [editApparatusName, setEditApparatusName] = useState("");
+  const [editCategoryState, setEditCategoryState] = useState("");
+  const [editPrimaryMusclesTxt, setEditPrimaryMusclesTxt] = useState("");
+  const [editGymZone, setEditGymZone] = useState("");
 
   // Form add states for physical equipment
   const [addId, setAddId] = useState("");
@@ -352,6 +375,63 @@ export default function AdminEquipmentMapping() {
     setEditMfg(eq.manufacturer || "");
     setEditModel(eq.model || "");
     setEditEligible(eq.workout_eligible);
+
+    // Populate advanced fields modal state
+    setSelectedMachineToEdit(eq);
+    setEditApparatusName(eq.canonical_name);
+    setEditCategoryState(eq.category);
+    setEditPrimaryMusclesTxt((eq.primary_muscle_groups || []).join(", "));
+    setEditGymZone(eq.gym_zone || "");
+    setEditBeginnerSettings(eq.beginner_settings || "");
+    setEditIntermediateSettings(eq.intermediate_settings || "");
+    setEditAdvancedSettings(eq.advanced_settings || "");
+    setEditRecommendedSeatPosition(eq.recommended_seat_position || "");
+    setEditRecommendedWeightRange(eq.recommended_weight_range || "");
+    setEditSafetyInstructions(eq.safety_instructions || "");
+    setEditSupportedExercisesTxt((eq.supported_exercises || []).join(", "));
+  };
+
+  const handleSaveDetailedMachine = async () => {
+    if (!selectedMachineToEdit) return;
+    const id = selectedMachineToEdit.equipment_id;
+    const payload = {
+      canonical_name: editApparatusName.trim(),
+      category: editCategoryState,
+      quantity: Number(editQty),
+      status: editStatus,
+      manufacturer: editMfg.trim() || null,
+      model: editModel.trim() || null,
+      workout_eligible: editEligible,
+      gym_zone: editGymZone.trim() || null,
+      primary_muscle_groups: editPrimaryMusclesTxt.split(",").map(m => m.trim().toLowerCase()).filter(Boolean),
+      supported_exercises: editSupportedExercisesTxt.split(",").map(e => e.trim()).filter(Boolean),
+      beginner_settings: editBeginnerSettings.trim(),
+      intermediate_settings: editIntermediateSettings.trim(),
+      advanced_settings: editAdvancedSettings.trim(),
+      recommended_seat_position: editRecommendedSeatPosition.trim(),
+      recommended_weight_range: editRecommendedWeightRange.trim(),
+      safety_instructions: editSafetyInstructions.trim()
+    };
+
+    try {
+      const res = await fetch(`/api/equipment/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        showToast(`Machine specifications for "${payload.canonical_name}" successfully saved.`, "success");
+        setSelectedMachineToEdit(null);
+        setEditingPhysicalId(null);
+        fetchPhysicalEquipment();
+      } else {
+        const errorData = await res.json();
+        showToast(errorData.error || "Unable to modify machine specifications.", "error");
+      }
+    } catch (err: any) {
+      showToast(`Communication error: ${err.message}`, "error");
+    }
   };
 
   const handleUpdatePhysicalItem = async (id: string) => {
@@ -1374,6 +1454,218 @@ export default function AdminEquipmentMapping() {
             }
           `}} />
         </>
+      )}
+
+      {/* DETAILED MACHINE SPECIFICATIONS AND SETTINGS MODAL */}
+      {selectedMachineToEdit && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 z-50 text-xs overflow-y-auto font-sans">
+          <div className="bg-neutral-950 border border-neutral-900 rounded-3xl p-6 max-w-2xl w-full space-y-5 my-8">
+            
+            <div className="flex justify-between items-start border-b border-neutral-900 pb-3">
+              <div>
+                <span className="text-[10px] bg-red-600/10 text-red-500 font-extrabold px-2.5 py-1 rounded border border-red-500/10 uppercase tracking-widest block w-fit mb-1">
+                  Floor Hardware Control System
+                </span>
+                <h3 className="text-white text-base font-extrabold uppercase tracking-tight">
+                  Customize Specs: {selectedMachineToEdit.canonical_name}
+                </h3>
+                <code className="text-[10px] text-neutral-500 font-mono">ID: {selectedMachineToEdit.equipment_id}</code>
+              </div>
+              <button 
+                onClick={() => setSelectedMachineToEdit(null)}
+                className="bg-neutral-900 text-white hover:bg-neutral-850 p-2 rounded-full cursor-pointer transition-colors"
+              >
+                ⟌ ✕
+              </button>
+            </div>
+
+            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+              
+              {/* Core Attributes Panel */}
+              <div className="bg-neutral-900/40 p-4 border border-neutral-900 rounded-2xl space-y-3">
+                <h4 className="text-[10px] text-red-500 font-extrabold uppercase tracking-wider border-b border-neutral-900 pb-1.5">Machine Floor Attributes</h4>
+                
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-neutral-400 uppercase font-black block">Apparatus / Machine Name</label>
+                    <input 
+                      type="text"
+                      value={editApparatusName}
+                      onChange={(e) => setEditApparatusName(e.target.value)}
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-xl p-2.5 text-white"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-neutral-400 uppercase font-black block">Primary Category</label>
+                    <select
+                      value={editCategoryState}
+                      onChange={(e) => setEditCategoryState(e.target.value)}
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-xl p-2.5 text-white"
+                    >
+                      <option value="selectorized_machine">Selectorized Stack Machine</option>
+                      <option value="cable_machine">Cable / Pulley Machine</option>
+                      <option value="plate_loaded">Plate Loaded Strength Machine</option>
+                      <option value="free_weight">Heavy Free Weight Bench / Apparatus</option>
+                      <option value="cardio">Cardiovascular Trainer</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-neutral-400 uppercase font-black block">Floor Zone / Placement</label>
+                    <input 
+                      type="text"
+                      value={editGymZone}
+                      onChange={(e) => setEditGymZone(e.target.value)}
+                      placeholder="e.g. Strength Line A"
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-xl p-2 text-white"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-neutral-400 uppercase font-black block">Quantity on Floor</label>
+                    <input 
+                      type="number"
+                      min={1}
+                      value={editQty}
+                      onChange={(e) => setEditQty(Number(e.target.value))}
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-xl p-2 text-white"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-neutral-400 uppercase font-black block">Workout Eligibility</label>
+                    <select
+                      value={String(editEligible)}
+                      onChange={(e) => setEditEligible(e.target.value === "true")}
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-xl p-2 text-white"
+                    >
+                      <option value="true">Include in AI Plans</option>
+                      <option value="false">Exclude (Out-of-service / Manual only)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Target Muscles and Mapped Workouts */}
+              <div className="bg-neutral-900/40 p-4 border border-neutral-900 rounded-2xl space-y-3">
+                <h4 className="text-[10px] text-red-500 font-extrabold uppercase tracking-wider border-b border-neutral-900 pb-1.5 font-sans">Mapping & Connections</h4>
+                
+                <div className="space-y-1">
+                  <label className="text-[9px] text-neutral-400 uppercase font-black block">Target Muscles (comma separated list)</label>
+                  <input 
+                    type="text"
+                    value={editPrimaryMusclesTxt}
+                    onChange={(e) => setEditPrimaryMusclesTxt(e.target.value)}
+                    placeholder="chest, triceps, front shoulders"
+                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl p-2.5 text-white"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[9px] text-neutral-400 uppercase font-black block">Supported Catalog Exercises (comma separated list)</label>
+                  <input 
+                    type="text"
+                    value={editSupportedExercisesTxt}
+                    onChange={(e) => setEditSupportedExercisesTxt(e.target.value)}
+                    placeholder="chest press machine, vertical decline press"
+                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl p-2.5 text-white"
+                  />
+                </div>
+              </div>
+
+              {/* Training Progression & Settings */}
+              <div className="bg-neutral-900/40 p-4 border border-neutral-900 rounded-2xl space-y-3">
+                <h4 className="text-[10px] text-amber-500 font-extrabold uppercase tracking-wider border-b border-neutral-900 pb-1.5">Machine Presets & Athlete Settings</h4>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-amber-500 uppercase font-black block">Beginner Presets</label>
+                    <textarea 
+                      rows={3}
+                      value={editBeginnerSettings}
+                      onChange={(e) => setEditBeginnerSettings(e.target.value)}
+                      placeholder="Seat Position: Height #3, Pin weight: 10-15kg, Tempo: 3-0-1-0"
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-xl p-2.5 text-white text-[11px] font-sans"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-amber-500 uppercase font-black block">Intermediate Presets</label>
+                    <textarea 
+                      rows={3}
+                      value={editIntermediateSettings}
+                      onChange={(e) => setEditIntermediateSettings(e.target.value)}
+                      placeholder="Seat Position: Height #3, Pin weight: 30-40kg, Tempo: 4-1-1-0"
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-xl p-2.5 text-white text-[11px] font-sans"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-amber-500 uppercase font-black block">Advanced Presets</label>
+                    <textarea 
+                      rows={3}
+                      value={editAdvancedSettings}
+                      onChange={(e) => setEditAdvancedSettings(e.target.value)}
+                      placeholder="Seat Position: Height #2, Pin weight: 65-80kg, Tempo: 4s negative eccentric"
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-xl p-2.5 text-white text-[11px] font-sans"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-neutral-400 uppercase font-black block">Recommended Seat Position Range</label>
+                    <input 
+                      type="text"
+                      value={editRecommendedSeatPosition}
+                      onChange={(e) => setEditRecommendedSeatPosition(e.target.value)}
+                      placeholder="e.g. Height level #3-4 (line zero-marker with center chest)"
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-xl p-2.5 text-white"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-neutral-400 uppercase font-black block">Recommended Weight Range</label>
+                    <input 
+                      type="text"
+                      value={editRecommendedWeightRange}
+                      onChange={(e) => setEditRecommendedWeightRange(e.target.value)}
+                      placeholder="e.g. 5kg to 100kg"
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-xl p-2.5 text-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[9px] text-neutral-400 uppercase font-black block">Precaution & Safety Instructions</label>
+                  <textarea 
+                    rows={2}
+                    value={editSafetyInstructions}
+                    onChange={(e) => setEditSafetyInstructions(e.target.value)}
+                    placeholder="Keep shoulder blades pin-backed into pad, never flare elbows excessively, lock-pin security verify before starting heavy lifts."
+                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl p-2.5 text-white text-[11px]"
+                  />
+                </div>
+              </div>
+
+            </div>
+
+            <div className="flex justify-end gap-3 pt-3 border-t border-neutral-900">
+              <button 
+                type="button"
+                onClick={() => setSelectedMachineToEdit(null)}
+                className="bg-neutral-900 border border-neutral-800 hover:bg-neutral-850 text-white font-extrabold px-5 py-2.5 rounded-xl uppercase text-[10px] tracking-wider cursor-pointer"
+              >
+                Discard
+              </button>
+              <button 
+                type="button"
+                onClick={handleSaveDetailedMachine}
+                className="bg-red-600 hover:bg-red-700 text-black font-black px-5 py-2.5 rounded-xl uppercase text-[10px] tracking-wider cursor-pointer font-sans"
+              >
+                Save Hardware Specs
+              </button>
+            </div>
+
+          </div>
+        </div>
       )}
 
     </div>

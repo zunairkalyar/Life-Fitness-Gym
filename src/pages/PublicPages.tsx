@@ -152,11 +152,22 @@ export default function PublicPages({
       });
 
       if (!verifyRes.ok) {
-        const errObj = await verifyRes.json();
-        throw new Error(errObj.error || "Server validation rejected biometric signature.");
+        let errMsg = "Server validation rejected biometric signature.";
+        try {
+          const errObj = await verifyRes.json();
+          errMsg = errObj.error || errMsg;
+        } catch (_) {
+          errMsg = `Server validation failed (${verifyRes.status} ${verifyRes.statusText})`;
+        }
+        throw new Error(errMsg);
       }
 
-      const result = await verifyRes.json();
+      let result: any;
+      try {
+        result = await verifyRes.json();
+      } catch (_) {
+        throw new Error("Invalid response data format received from authentication server.");
+      }
       addAssertLog("SUCCESS: FIDO2 WebAuthn authentication handshake completed!");
       
       if (onLoginSuccess && result.user) {

@@ -125,6 +125,12 @@ export default function App() {
         setScannedMachineId(machineId);
         setCurrentView("qr-machine-page");
       }
+    } else if (path === "/admin/exercises") {
+      sessionStorage.setItem("admin_target_tab", "musclewiki");
+      setCurrentView("admin");
+    } else if (path === "/admin/machines") {
+      sessionStorage.setItem("admin_target_tab", "equipment");
+      setCurrentView("admin");
     }
   }, []);
 

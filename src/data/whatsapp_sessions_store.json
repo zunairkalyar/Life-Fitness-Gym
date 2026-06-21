@@ -1,0 +1,48 @@
+[
+  {
+    "id": "session-kfc-101-2026-06-16",
+    "memberId": "KFC-101",
+    "workoutPlanId": "wp-kfc-101-1",
+    "workoutDate": "2026-06-16",
+    "workoutName": "Push Day Workout",
+    "scheduledTime": "18:00",
+    "reminderSentAt": "18:00",
+    "checkInTime": "18:15",
+    "completionQuestionSentAt": "19:45",
+    "completionResponse": "completed",
+    "completedAt": "19:50",
+    "status": "workout_completed",
+    "isLateAttendance": false,
+    "createdAt": "2026-06-16T11:00:00Z",
+    "updatedAt": "2026-06-16T19:50:00Z"
+  },
+  {
+    "id": "session-kfc-101-2026-06-17",
+    "memberId": "KFC-101",
+    "workoutPlanId": "wp-kfc-101-1",
+    "workoutDate": "2026-06-17",
+    "workoutName": "Chest and Triceps Hypertrophy",
+    "scheduledTime": "18:00",
+    "reminderSentAt": "18:00",
+    "status": "reminder_sent",
+    "isLateAttendance": false,
+    "createdAt": "2026-06-17T11:00:00Z",
+    "updatedAt": "2026-06-17T18:00:00Z"
+  },
+  {
+    "id": "session-kfc-102-2026-06-16",
+    "memberId": "KFC-102",
+    "workoutPlanId": "wp-kfc-102-1",
+    "workoutDate": "2026-06-16",
+    "workoutName": "Pull Day - Lats Focused",
+    "scheduledTime": "17:30",
+    "reminderSentAt": "17:30",
+    "attendanceQuestionSentAt": "18:15",
+    "plannedAttendanceResponse": "cannot_come",
+    "absenceRecordedAt": "21:30",
+    "status": "absent",
+    "isLateAttendance": false,
+    "createdAt": "2026-06-16T11:00:00Z",
+    "updatedAt": "2026-06-16T21:30:00Z"
+  }
+]

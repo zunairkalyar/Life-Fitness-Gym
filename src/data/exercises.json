@@ -2,197 +2,295 @@
   {
     "exercise_id": "barbell_squat",
     "name": "Barbell Squat",
-    "required_equipment": ["squat_barbell_rack"],
+    "required_equipment": [
+      "squat_barbell_rack"
+    ],
     "muscle_group": "quadriceps",
     "difficulty": "intermediate",
     "alternatives": [
       {
         "exercise": "Smith Machine Squat",
-        "required_equipment": ["smith_machine"]
+        "required_equipment": [
+          "smith_machine"
+        ]
       },
       {
         "exercise": "Leg Press / Hack Squat",
-        "required_equipment": ["leg_extension_leg_curl"]
+        "required_equipment": [
+          "leg_extension_leg_curl"
+        ]
       }
-    ]
+    ],
+    "provider": "manual",
+    "status": "Published"
   },
   {
     "exercise_id": "machine_chest_press",
     "name": "Machine Chest Press",
-    "required_equipment": ["seated_chest_press"],
+    "required_equipment": [
+      "seated_chest_press"
+    ],
     "muscle_group": "chest",
     "difficulty": "beginner",
     "alternatives": [
       {
         "exercise": "Dumbbell Bench Press",
-        "required_equipment": ["flat_utility_bench", "dumbbell_rack"]
+        "required_equipment": [
+          "flat_utility_bench",
+          "dumbbell_rack"
+        ]
       },
       {
         "exercise": "Smith Machine Bench Press",
-        "required_equipment": ["smith_machine"]
+        "required_equipment": [
+          "smith_machine"
+        ]
       },
       {
         "exercise": "Cable Chest Press",
-        "required_equipment": ["dual_cable_functional_trainer"]
+        "required_equipment": [
+          "dual_cable_functional_trainer"
+        ]
       }
-    ]
+    ],
+    "provider": "manual",
+    "status": "Published"
   },
   {
     "exercise_id": "lat_pulldown",
     "name": "Lat Pulldown",
-    "required_equipment": ["lat_pulldown_low_row"],
+    "required_equipment": [
+      "lat_pulldown_low_row"
+    ],
     "muscle_group": "lats",
     "difficulty": "beginner",
     "alternatives": [
       {
         "exercise": "Pull-Ups",
-        "required_equipment": ["dip_knee_raise_station"]
+        "required_equipment": [
+          "dip_knee_raise_station"
+        ]
       },
       {
         "exercise": "Cable Straight-Arm Pullovers",
-        "required_equipment": ["dual_cable_functional_trainer"]
+        "required_equipment": [
+          "dual_cable_functional_trainer"
+        ]
       }
-    ]
+    ],
+    "provider": "manual",
+    "status": "Published"
   },
   {
     "exercise_id": "machine_preacher_curl",
     "name": "Machine Preacher Curl",
-    "required_equipment": ["biceps_preacher_curl_machine"],
+    "required_equipment": [
+      "biceps_preacher_curl_machine"
+    ],
     "muscle_group": "biceps",
     "difficulty": "beginner",
     "alternatives": [
       {
         "exercise": "EZ-Bar Preacher Curl",
-        "required_equipment": ["preacher_curl_bench"]
+        "required_equipment": [
+          "preacher_curl_bench"
+        ]
       },
       {
         "exercise": "Incline Dumbbell Curl",
-        "required_equipment": ["adjustable_incline_bench", "dumbbell_rack"]
+        "required_equipment": [
+          "adjustable_incline_bench",
+          "dumbbell_rack"
+        ]
       }
-    ]
+    ],
+    "provider": "manual",
+    "status": "Published"
   },
   {
     "exercise_id": "machine_dip",
     "name": "Machine Dip",
-    "required_equipment": ["triceps_dip_press_machine"],
+    "required_equipment": [
+      "triceps_dip_press_machine"
+    ],
     "muscle_group": "triceps",
     "difficulty": "beginner",
     "alternatives": [
       {
         "exercise": "Bodyweight Dips",
-        "required_equipment": ["dip_knee_raise_station"]
+        "required_equipment": [
+          "dip_knee_raise_station"
+        ]
       },
       {
         "exercise": "Cable Tricep Pushdowns",
-        "required_equipment": ["dual_cable_functional_trainer"]
+        "required_equipment": [
+          "dual_cable_functional_trainer"
+        ]
       }
-    ]
+    ],
+    "provider": "manual",
+    "status": "Published"
   },
   {
     "exercise_id": "barbell_bench_press",
     "name": "Barbell Bench Press",
-    "required_equipment": ["flat_bench_press_station"],
+    "required_equipment": [
+      "flat_bench_press_station"
+    ],
     "muscle_group": "chest",
     "difficulty": "intermediate",
     "alternatives": [
       {
         "exercise": "Dumbbell Bench Press",
-        "required_equipment": ["flat_utility_bench", "dumbbell_rack"]
+        "required_equipment": [
+          "flat_utility_bench",
+          "dumbbell_rack"
+        ]
       },
       {
         "exercise": "Smith Machine Bench Press",
-        "required_equipment": ["smith_machine"]
+        "required_equipment": [
+          "smith_machine"
+        ]
       }
-    ]
+    ],
+    "provider": "manual",
+    "status": "Published"
   },
   {
     "exercise_id": "incline_barbell_press",
     "name": "Incline Barbell Bench Press",
-    "required_equipment": ["incline_bench_press_station"],
+    "required_equipment": [
+      "incline_bench_press_station"
+    ],
     "muscle_group": "chest",
     "difficulty": "intermediate",
     "alternatives": [
       {
         "exercise": "Incline Dumbbell Press",
-        "required_equipment": ["adjustable_incline_bench", "dumbbell_rack"]
+        "required_equipment": [
+          "adjustable_incline_bench",
+          "dumbbell_rack"
+        ]
       },
       {
         "exercise": "Smith Machine Incline Press",
-        "required_equipment": ["smith_machine"]
+        "required_equipment": [
+          "smith_machine"
+        ]
       }
-    ]
+    ],
+    "provider": "manual",
+    "status": "Published"
   },
   {
     "exercise_id": "t_bar_row",
     "name": "T-Bar Row",
-    "required_equipment": ["t_bar_row_machine"],
+    "required_equipment": [
+      "t_bar_row_machine"
+    ],
     "muscle_group": "upper back",
     "difficulty": "intermediate",
     "alternatives": [
       {
         "exercise": "Seated Cable Row",
-        "required_equipment": ["lat_pulldown_low_row"]
+        "required_equipment": [
+          "lat_pulldown_low_row"
+        ]
       },
       {
         "exercise": "Dumbbell Rows",
-        "required_equipment": ["flat_utility_bench", "dumbbell_rack"]
+        "required_equipment": [
+          "flat_utility_bench",
+          "dumbbell_rack"
+        ]
       }
-    ]
+    ],
+    "provider": "manual",
+    "status": "Published"
   },
   {
     "exercise_id": "machine_shoulder_press",
     "name": "Machine Shoulder Press",
-    "required_equipment": ["shoulder_press_machine"],
+    "required_equipment": [
+      "shoulder_press_machine"
+    ],
     "muscle_group": "shoulders",
     "difficulty": "beginner",
     "alternatives": [
       {
         "exercise": "Seated Dumbbell Shoulder Press",
-        "required_equipment": ["adjustable_incline_bench", "dumbbell_rack"]
+        "required_equipment": [
+          "adjustable_incline_bench",
+          "dumbbell_rack"
+        ]
       },
       {
         "exercise": "Smith Machine Shoulder Press",
-        "required_equipment": ["smith_machine"]
+        "required_equipment": [
+          "smith_machine"
+        ]
       }
-    ]
+    ],
+    "provider": "manual",
+    "status": "Published"
   },
   {
     "exercise_id": "back_extension",
     "name": "Back Extension",
-    "required_equipment": ["roman_chair_hyperextension"],
+    "required_equipment": [
+      "roman_chair_hyperextension"
+    ],
     "muscle_group": "lower back",
     "difficulty": "beginner",
     "alternatives": [
       {
         "exercise": "Barbell Roman Deadlift",
-        "required_equipment": ["squat_barbell_rack"]
+        "required_equipment": [
+          "squat_barbell_rack"
+        ]
       }
-    ]
+    ],
+    "provider": "manual",
+    "status": "Published"
   },
   {
     "exercise_id": "arm_wrestling_practice",
     "name": "Arm-Wrestling Practice",
-    "required_equipment": ["arm_wrestling_training_table"],
+    "required_equipment": [
+      "arm_wrestling_training_table"
+    ],
     "muscle_group": "forearms",
     "difficulty": "intermediate",
     "alternatives": [
       {
         "exercise": "Wrist Flexion/Pronation",
-        "required_equipment": ["dual_cable_functional_trainer"]
+        "required_equipment": [
+          "dual_cable_functional_trainer"
+        ]
       }
-    ]
+    ],
+    "provider": "manual",
+    "status": "Published"
   },
   {
     "exercise_id": "battle_rope_waves",
     "name": "Battle Rope Waves",
-    "required_equipment": ["battle_rope_setup"],
+    "required_equipment": [
+      "battle_rope_setup"
+    ],
     "muscle_group": "cardiovascular system",
     "difficulty": "beginner",
     "alternatives": [
       {
         "exercise": "Treadmill Jogging",
-        "required_equipment": ["treadmill"]
+        "required_equipment": [
+          "treadmill"
+        ]
       }
-    ]
+    ],
+    "provider": "manual",
+    "status": "Published"
   }
 ]

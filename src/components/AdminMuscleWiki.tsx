@@ -56,7 +56,7 @@ export interface LocalExercise {
   exercise_id: string;
   name: string;
   slug?: string;
-  provider: "musclewiki" | "manual" | "other";
+  provider: "musclewiki" | "manual" | "other" | "wger" | "exercisedb";
   external_id?: string;
   status: "Draft" | "Published" | "Needs Review" | "Missing Media" | "Import Failed" | "Inactive";
   last_synced_at?: string;
@@ -86,6 +86,27 @@ export interface LocalExercise {
   substitutes?: string[];
   source_url?: string;
   attribution?: string;
+
+  // New High-Fidelity Workout DB Fields & Machine Mappings
+  alternative_names?: string[];
+  body_part?: string;
+  exercise_type?: string;
+  tips?: string[];
+  video_url?: string;
+  gif_url?: string;
+  tags?: string[];
+  suitable_gender?: string;
+  suitable_age?: string;
+  calories_estimate?: number;
+  recommended_sets?: number;
+  recommended_reps?: string;
+  recommended_rest_time?: number;
+  primary_machine_id?: string;
+  secondary_machine_id?: string;
+  alternative_machine_id?: string;
+  free_weight_alternative?: string;
+  bodyweight_alternative?: string;
+  local_customizations?: any;
 }
 
 export interface ImportJobState {
@@ -154,8 +175,12 @@ export default function AdminMuscleWiki() {
 
   const [exercisesCatalog, setExercisesCatalog] = useState<LocalExercise[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [providerFilter, setProviderFilter] = useState<"all" | "manual" | "musclewiki">("all");
-  const [statusFilter, setStatusFilter] = useState<"all" | "Published" | "Draft" | "Needs Review" | "Inactive">("all");
+  const [providerFilter, setProviderFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [bodyPartFilter, setBodyPartFilter] = useState<string>("all");
+  const [muscleFilter, setMuscleFilter] = useState<string>("all");
+  const [machineFilter, setMachineFilter] = useState<string>("all");
   
   // Job settings parameters
   const [syncBatchSize, setSyncBatchSize] = useState(5);
@@ -167,6 +192,44 @@ export default function AdminMuscleWiki() {
   const [editEx, setEditEx] = useState<LocalExercise | null>(null);
   const [isCreatingRaw, setIsCreatingRaw] = useState(false);
   const [savingEx, setSavingEx] = useState(false);
+
+  // New Mappings and Merge States
+  const [machines, setMachines] = useState<any[]>([]);
+  const [mergeSource, setMergeSource] = useState<LocalExercise | null>(null);
+  const [mergeTargetId, setMergeTargetId] = useState("");
+  const [isMerging, setIsMerging] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/equipment")
+      .then(res => res.json())
+      .then(data => setMachines(Array.isArray(data) ? data : []))
+      .catch(err => console.error("Failed loading inventory hardware:", err));
+  }, []);
+
+  const handleMergeDuplicates = async () => {
+    if (!mergeSource || !mergeTargetId) return;
+    setIsMerging(true);
+    try {
+      const res = await fetch("/api/admin/exercises/merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceId: mergeSource.exercise_id, targetId: mergeTargetId })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Merge action failed");
+      setMsg(data.message || "Exercises merged successfully.");
+      setMergeSource(null);
+      setMergeTargetId("");
+      // Refresh exercise catalog
+      const catRes = await fetch("/api/exercises");
+      const catData = await catRes.json();
+      setExercisesCatalog(catData);
+    } catch (err: any) {
+      setMsg(`[FAIL] Merge failed: ${err.message}`);
+    } finally {
+      setIsMerging(false);
+    }
+  };
 
   // Form states under manual creation
   const [formName, setFormName] = useState("");
@@ -465,10 +528,37 @@ export default function AdminMuscleWiki() {
   // Filter exercises
   const filteredExercises = exercisesCatalog.filter(ex => {
     const q = searchQuery.toLowerCase();
-    const matchesQuery = !q || ex.name.toLowerCase().includes(q) || ex.category.toLowerCase().includes(q) || (ex.primaryMuscles && ex.primaryMuscles.some(m => m.toLowerCase().includes(q)));
+    const matchesQuery = !q || 
+      ex.name.toLowerCase().includes(q) || 
+      (ex.category || "").toLowerCase().includes(q) || 
+      (ex.primaryMuscles && ex.primaryMuscles.some(m => m.toLowerCase().includes(q))) ||
+      (ex.alternative_names && ex.alternative_names.some(n => n.toLowerCase().includes(q)));
+
     const matchesProvider = providerFilter === "all" || ex.provider === providerFilter;
     const matchesStatus = statusFilter === "all" || ex.status === statusFilter;
-    return matchesQuery && matchesProvider && matchesStatus;
+    const matchesCategory = categoryFilter === "all" || (ex.category || "").toLowerCase() === categoryFilter.toLowerCase();
+    
+    const matchesBodyPart = bodyPartFilter === "all" || 
+      (ex.body_part || "").toLowerCase() === bodyPartFilter.toLowerCase() ||
+      (ex.muscle_group || "").toLowerCase() === bodyPartFilter.toLowerCase() ||
+      (ex.body_part === "cardio" && ex.category === "cardio") || ex.primaryMuscles?.some(pm => {
+        const bp = (ex.body_part || "").toLowerCase();
+        const mg = (ex.muscle_group || "").toLowerCase();
+        return pm.toLowerCase() === bp || pm.toLowerCase() === mg;
+      });
+
+    const matchesMuscle = muscleFilter === "all" || 
+      (ex.primaryMuscles && ex.primaryMuscles.some(m => m.toLowerCase() === muscleFilter.toLowerCase())) ||
+      (ex.secondaryMuscles && ex.secondaryMuscles.some(m => m.toLowerCase() === muscleFilter.toLowerCase())) ||
+      (ex.muscle_group && ex.muscle_group.toLowerCase() === muscleFilter.toLowerCase());
+
+    const matchesMachine = machineFilter === "all" || 
+      ex.primary_machine_id === machineFilter || 
+      ex.secondary_machine_id === machineFilter || 
+      ex.alternative_machine_id === machineFilter || 
+      (ex.required_equipment && ex.required_equipment.includes(machineFilter));
+
+    return matchesQuery && matchesProvider && matchesStatus && matchesCategory && matchesBodyPart && matchesMuscle && matchesMachine;
   });
 
   return (
@@ -716,46 +806,125 @@ export default function AdminMuscleWiki() {
             </div>
 
             {/* Filter toolbars */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs font-bold font-sans">
-              <div className="relative">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-neutral-500" />
-                <input 
-                  type="text"
-                  placeholder="Query by title, muscle or category..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl py-2 pl-9 pr-4 text-white text-xs"
-                />
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs font-bold font-sans">
+                <div className="relative md:col-span-2">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-neutral-500" />
+                  <input 
+                    type="text"
+                    placeholder="Search by title, instruction keywords, or alternative names..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full bg-neutral-900 border border-neutral-800 rounded-xl py-2 pl-9 pr-4 text-white text-xs placeholder:text-neutral-600 focus:border-red-650 transition-all font-medium"
+                  />
+                </div>
+
+                <div>
+                  <select
+                    value={providerFilter}
+                    onChange={(e) => setProviderFilter(e.target.value)}
+                    className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-2 text-white font-medium"
+                  >
+                    <option value="all">All Providers (Unified)</option>
+                    <option value="manual">Manual Custom-Created</option>
+                    <option value="musclewiki">MuscleWiki API Synchronized</option>
+                    <option value="wger">Wger API Imported</option>
+                    <option value="exercisedb">ExerciseDB API Imported</option>
+                  </select>
+                </div>
+
+                <div>
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-2 text-white font-medium"
+                  >
+                    <option value="all">All Statuses (Active & Holds)</option>
+                    <option value="Published">Published (Active)</option>
+                    <option value="Draft">Draft (Hold)</option>
+                    <option value="Needs Review">Needs Review</option>
+                    <option value="Inactive">Inactive</option>
+                  </select>
+                </div>
               </div>
 
-              <div>
-                <select
-                  value={providerFilter}
-                  onChange={(e) => setProviderFilter(e.target.value as any)}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-2 text-white"
-                >
-                  <option value="all">All Providers (Unified)</option>
-                  <option value="manual">Manual Custom-Created</option>
-                  <option value="musclewiki">MuscleWiki API Synchronized</option>
-                </select>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs font-bold font-sans">
+                <div>
+                  <select
+                    value={categoryFilter}
+                    onChange={(e) => setCategoryFilter(e.target.value)}
+                    className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-2 text-white font-medium"
+                  >
+                    <option value="all">All Categories (Any Equipment)</option>
+                    <option value="barbell">Barbell movements</option>
+                    <option value="dumbbell">Dumbbell movements</option>
+                    <option value="machine">Fixed Machine movements</option>
+                    <option value="cable">Cable movements</option>
+                    <option value="smith">Smith Machine movements</option>
+                    <option value="bodyweight">Bodyweight / Calisthenics</option>
+                    <option value="cardio">Cardiovascular System</option>
+                  </select>
+                </div>
+
+                <div>
+                  <select
+                    value={bodyPartFilter}
+                    onChange={(e) => setBodyPartFilter(e.target.value)}
+                    className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-2 text-white font-medium"
+                  >
+                    <option value="all">All Body Parts</option>
+                    <option value="chest">Chest</option>
+                    <option value="back">Back</option>
+                    <option value="shoulders">Shoulders</option>
+                    <option value="arms">Arms</option>
+                    <option value="legs">Legs</option>
+                    <option value="core">Core / Abs</option>
+                    <option value="cardio">Cardio Conditioning</option>
+                  </select>
+                </div>
+
+                <div>
+                  <select
+                    value={muscleFilter}
+                    onChange={(e) => setMuscleFilter(e.target.value)}
+                    className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-2 text-white font-medium"
+                  >
+                    <option value="all">All Muscles</option>
+                    <option value="Chest">Chest (Pectorals)</option>
+                    <option value="Back">Back (Lats, Rhomboids)</option>
+                    <option value="Shoulders">Shoulders (Deltoids)</option>
+                    <option value="Biceps">Biceps brachii</option>
+                    <option value="Triceps">Triceps brachii</option>
+                    <option value="Forearms">Forearm wrist muscles</option>
+                    <option value="Quadriceps">Quadriceps (Quads)</option>
+                    <option value="Hamstrings">Hamstrings</option>
+                    <option value="Glutes">Gluteus Maximus</option>
+                    <option value="Abs">Abdominals (Core)</option>
+                    <option value="Cardio">Cardiovascular System</option>
+                  </select>
+                </div>
+
+                <div>
+                  <select
+                    value={machineFilter}
+                    onChange={(e) => setMachineFilter(e.target.value)}
+                    className="w-full bg-neutral-900 border border-neutral-850 rounded-xl p-2 text-white font-medium"
+                  >
+                    <option value="all">All Machine Mappings</option>
+                    {machines.map(m => (
+                      <option key={m.equipment_id} value={m.equipment_id}>{m.canonical_name}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
-              <div>
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value as any)}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-2 text-white"
-                >
-                  <option value="all">All Statuses (Active & Holds)</option>
-                  <option value="Published">Published (Active)</option>
-                  <option value="Draft">Draft (Hold)</option>
-                  <option value="Needs Review">Needs Review</option>
-                  <option value="Inactive">Inactive</option>
-                </select>
-              </div>
-
-              <div className="bg-neutral-900 p-2 text-[10px] text-neutral-400 font-mono flex items-center justify-center border border-neutral-850 rounded-xl text-center">
-                Total matching: <span className="text-white font-extrabold ml-1 font-sans text-xs">{filteredExercises.length} records</span>
+              <div className="flex justify-between items-center bg-neutral-900/40 p-3 text-[10px] text-neutral-400 font-mono border border-neutral-900 rounded-xl">
+                <div className="flex gap-4">
+                  <span>Current Filters: {categoryFilter !== 'all' && <span className="text-yellow-500 font-bold ml-1">Type: {categoryFilter}</span>} {bodyPartFilter !== 'all' && <span className="text-pink-500 font-bold ml-1">Part: {bodyPartFilter}</span>} {muscleFilter !== 'all' && <span className="text-orange-500 font-bold ml-1">Muscle: {muscleFilter}</span>} {machineFilter !== 'all' && <span className="text-blue-400 font-bold ml-1 font-sans">Machine: Mapped</span>}</span>
+                </div>
+                <div>
+                  Total matching: <span className="text-white font-extrabold ml-1 font-sans text-xs">{filteredExercises.length} records</span>
+                </div>
               </div>
             </div>
 
@@ -846,9 +1015,20 @@ export default function AdminMuscleWiki() {
                               onClick={() => {
                                 setEditEx(ex);
                               }}
-                              className="bg-red-600 hover:bg-red-700 text-black font-black px-2 py-1 rounded-lg text-[10px] uppercase cursor-pointer flex items-center gap-1 transition-all"
+                              className="bg-red-600 hover:bg-red-700 text-black font-black px-2 py-1 rounded-lg text-[10px] uppercase cursor-pointer flex items-center gap-1 transition-all animate-none"
                             >
                               <Edit className="h-3 w-3" /> Customize
+                            </button>
+                            <button
+                              onClick={() => {
+                                setMergeSource(ex);
+                                const other = exercisesCatalog.find(e => e.exercise_id !== ex.exercise_id);
+                                setMergeTargetId(other ? other.exercise_id : "");
+                              }}
+                              className="bg-neutral-900 border border-neutral-800 text-amber-500 hover:text-amber-450 font-bold px-2 py-1 rounded-lg text-[10px] uppercase cursor-pointer flex items-center gap-1 transition-all"
+                              title="Merge duplicate exercises under a target master"
+                            >
+                              Merge
                             </button>
                           </div>
                         </td>
@@ -1286,7 +1466,139 @@ export default function AdminMuscleWiki() {
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-4 border-t border-neutral-900 pt-3">
+                <div className="space-y-1">
+                  <label className="text-[9px] text-neutral-500 uppercase font-black block">Suitable Gender</label>
+                  <select
+                    value={editEx.suitable_gender || "All"}
+                    onChange={(e) => setEditEx({ ...editEx, suitable_gender: e.target.value })}
+                    className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-2.5 text-white"
+                  >
+                    <option value="All">All/Unisex</option>
+                    <option value="Male">Male Oriented</option>
+                    <option value="Female">Female Oriented</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[9px] text-neutral-500 uppercase font-black block">Suitable Age Bracket</label>
+                  <select
+                    value={editEx.suitable_age || "All"}
+                    onChange={(e) => setEditEx({ ...editEx, suitable_age: e.target.value })}
+                    className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-2.5 text-white"
+                  >
+                    <option value="All">All Brackets</option>
+                    <option value="Teen">Teens (Safe Weights)</option>
+                    <option value="Adult">Adult Standard</option>
+                    <option value="Senior">Seniors (Low Impact)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[9px] text-neutral-500 uppercase font-black block">Est. Calorie Burn (per set)</label>
+                  <input 
+                    type="number" 
+                    value={editEx.calories_estimate || 0}
+                    onChange={(e) => setEditEx({ ...editEx, calories_estimate: Number(e.target.value) })}
+                    className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-2.5 text-white"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[9px] text-neutral-500 uppercase font-black block">Recommended Rest Time (secs)</label>
+                  <input 
+                    type="number" 
+                    value={editEx.recommended_rest_time || 60}
+                    onChange={(e) => setEditEx({ ...editEx, recommended_rest_time: Number(e.target.value) })}
+                    className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-2.5 text-white"
+                  />
+                </div>
+              </div>
+
               <div className="space-y-1">
+                <label className="text-[9px] text-neutral-500 uppercase font-black block">Alternative Names (comma separated)</label>
+                <input 
+                  type="text" 
+                  value={editEx.alternative_names?.join(", ") || ""}
+                  onChange={(e) => setEditEx({ ...editEx, alternative_names: e.target.value.split(",").map(n => n.trim()).filter(Boolean) })}
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-2.5 text-white"
+                  placeholder="e.g. Machine Bench, vertical press"
+                />
+              </div>
+
+              {/* MACHINE MAPPINGS TO LIVE HARDWARE INVENTORY */}
+              <div className="border-t border-neutral-900 pt-3 space-y-3">
+                <h4 className="text-[10px] text-amber-500 font-extrabold uppercase tracking-wide">Physical Hardware Floor Mappings</h4>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[8px] text-neutral-500 uppercase font-black block">Primary Machine Required</label>
+                    <select
+                      value={editEx.primary_machine_id || ""}
+                      onChange={(e) => setEditEx({ ...editEx, primary_machine_id: e.target.value || undefined })}
+                      className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-2 text-white text-[11px]"
+                    >
+                      <option value="">-- No specific machine --</option>
+                      {machines.map(m => (
+                        <option key={m.equipment_id} value={m.equipment_id}>{m.canonical_name} ({m.status})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[8px] text-neutral-500 uppercase font-black block">Secondary Machine Option</label>
+                    <select
+                      value={editEx.secondary_machine_id || ""}
+                      onChange={(e) => setEditEx({ ...editEx, secondary_machine_id: e.target.value || undefined })}
+                      className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-2 text-white text-[11px]"
+                    >
+                      <option value="">-- None --</option>
+                      {machines.map(m => (
+                        <option key={m.equipment_id} value={m.equipment_id}>{m.canonical_name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[8px] text-neutral-500 uppercase font-black block">Alternative Machine</label>
+                    <select
+                      value={editEx.alternative_machine_id || ""}
+                      onChange={(e) => setEditEx({ ...editEx, alternative_machine_id: e.target.value || undefined })}
+                      className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-2 text-white text-[11px]"
+                    >
+                      <option value="">-- None --</option>
+                      {machines.map(m => (
+                        <option key={m.equipment_id} value={m.equipment_id}>{m.canonical_name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[8px] text-neutral-500 uppercase font-black block">Free Weight Alternative Movement</label>
+                    <input 
+                      type="text" 
+                      value={editEx.free_weight_alternative || ""}
+                      onChange={(e) => setEditEx({ ...editEx, free_weight_alternative: e.target.value })}
+                      className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-2 text-white"
+                      placeholder="e.g. Barbell Flat Bench Press"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[8px] text-neutral-500 uppercase font-black block">Bodyweight Alternative Movement</label>
+                    <input 
+                      type="text" 
+                      value={editEx.bodyweight_alternative || ""}
+                      onChange={(e) => setEditEx({ ...editEx, bodyweight_alternative: e.target.value })}
+                      className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-2 text-white"
+                      placeholder="e.g. Wide Grip Push-ups"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-1 border-t border-neutral-900 pt-3">
                 <label className="text-[9px] text-neutral-500 uppercase font-black block">Video Media URL path override</label>
                 <input 
                   type="text" 
@@ -1314,6 +1626,77 @@ export default function AdminMuscleWiki() {
                 className="bg-red-600 hover:bg-red-700 text-black font-black px-5 py-2 rounded-xl text-xs uppercase cursor-pointer flex items-center justify-center gap-1"
               >
                 {savingEx ? "Saving Overwrites..." : "Apply Customize Override"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MERGE DUPLICATES MODAL */}
+      {mergeSource && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 z-50 text-xs overflow-y-auto font-sans">
+          <div className="bg-neutral-950 border border-neutral-900 rounded-3xl p-6 max-w-lg w-full space-y-4">
+            
+            <div className="flex justify-between items-center border-b border-neutral-900 pb-3">
+              <div>
+                <span className="text-[9px] bg-amber-500/10 text-amber-500 font-extrabold px-2 py-0.5 rounded border border-amber-500/10 uppercase">
+                  Data Merge Engine (Duplicate Clean up)
+                </span>
+                <h3 className="text-white text-md font-extrabold uppercase mt-1">Merge Duplicate: "{mergeSource.name}"</h3>
+              </div>
+              <button 
+                onClick={() => setMergeSource(null)}
+                className="bg-neutral-900 hover:bg-neutral-800 text-white font-extrabold px-3 py-1.5 rounded-xl cursor-pointer"
+              >
+                ✕ Cancel
+              </button>
+            </div>
+
+            <div className="space-y-3 text-neutral-300">
+              <p className="leading-relaxed text-neutral-400">
+                You are merging the redundant exercise <strong className="text-white">"{mergeSource.name}"</strong> (ID: <code className="text-amber-500">{mergeSource.exercise_id}</code>) into a master canonical exercise.
+              </p>
+              
+              <div className="bg-red-500/5 border border-red-500/10 p-3 rounded-xl text-neutral-400 leading-normal text-[11px]">
+                <strong className="text-red-400 block mb-1">What this does:</strong>
+                - Appends "{mergeSource.name}" and any alternatives as alternative alias names on the target master.
+                - Combines all primary/secondary muscle targets.
+                - Combines all safety warnings, instructions, and physical machine floor mapping assignments.
+                - <span className="text-red-400 font-bold">Permanently deletes</span> the source record <strong className="text-white">"{mergeSource.name}"</strong> to keep our database search pristine.
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[9px] text-neutral-500 uppercase font-black block">Choose Master Canonical Exercise Destination</label>
+                <select
+                  value={mergeTargetId}
+                  onChange={(e) => setMergeTargetId(e.target.value)}
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-3 text-white font-sans font-bold text-xs"
+                >
+                  <option value="" disabled>-- Select master exercise --</option>
+                  {exercisesCatalog
+                    .filter(ex => ex.exercise_id !== mergeSource.exercise_id)
+                    .map(ex => (
+                      <option key={ex.exercise_id} value={ex.exercise_id}>
+                        {ex.name} [{ex.provider.toUpperCase()} | {ex.exercise_id}]
+                      </option>
+                    ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-3 border-t border-neutral-900 justify-end">
+              <button 
+                onClick={() => setMergeSource(null)}
+                className="bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 font-extrabold px-4 py-2 rounded-xl text-xs uppercase cursor-pointer text-white"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleMergeDuplicates}
+                disabled={isMerging || !mergeTargetId}
+                className="bg-green-500 hover:bg-green-600 text-black font-black px-5 py-2 rounded-xl text-xs uppercase cursor-pointer flex items-center justify-center gap-1 disabled:opacity-50"
+              >
+                {isMerging ? "Performing Merge..." : "Confirm & Execute Merge"}
               </button>
             </div>
           </div>
